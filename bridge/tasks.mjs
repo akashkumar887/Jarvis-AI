@@ -684,6 +684,191 @@ export function tasksServer(emitBlade, _emitPanel) {
           }
         },
       ),
+      // -----------------------------------------------------------------------
+      // macOS DARK MODE / APPEARANCE
+      // -----------------------------------------------------------------------
+      tool(
+        'system_dark_mode',
+        'Toggle or set macOS Dark Mode / Light Mode system appearance.',
+        {
+          action: z.enum(['toggle', 'dark', 'light', 'status']).default('toggle').describe('Appearance operation.'),
+        },
+        async (args) => {
+          if (args.action === 'status') {
+            const res = await runAppleScript('tell application "System Events" to tell appearance preferences to get dark mode')
+            return { content: [{ type: 'text', text: `macOS Appearance: ${res.output === 'true' ? 'Dark Mode' : 'Light Mode'}.` }] }
+          }
+          let script = 'tell application "System Events" to tell appearance preferences to set dark mode to not dark mode'
+          if (args.action === 'dark') {
+            script = 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+          } else if (args.action === 'light') {
+            script = 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+          }
+          await runAppleScript(script)
+          return { content: [{ type: 'text', text: `macOS system appearance adjusted (${args.action}).` }] }
+        },
+      ),
+
+      // -----------------------------------------------------------------------
+      // macOS POWER & LOCK SUBSYSTEM
+      // -----------------------------------------------------------------------
+      tool(
+        'system_power',
+        'Control MacBook power states: lock screen, put system to sleep, sleep display, or check battery power.',
+        {
+          action: z.enum(['lock', 'sleep', 'display_sleep', 'battery_info']).describe('Power subsystem action.'),
+        },
+        async (args) => {
+          if (args.action === 'lock') {
+            await runShell('/System/Library/CoreServices/Menu\\ Extras/User.menu/Contents/Resources/CGSession -suspend || pmset displaysleepnow')
+            return { content: [{ type: 'text', text: 'MacBook display locked, sir.' }] }
+          }
+          if (args.action === 'sleep') {
+            await runAppleScript('tell application "System Events" to sleep')
+            return { content: [{ type: 'text', text: 'Entering system sleep mode, sir.' }] }
+          }
+          if (args.action === 'display_sleep') {
+            await runShell('pmset displaysleepnow')
+            return { content: [{ type: 'text', text: 'Display powered down into sleep mode, sir.' }] }
+          }
+          const res = await runShell('pmset -g batt')
+          return { content: [{ type: 'text', text: `MacBook Battery Status:\n${res.output}` }] }
+        },
+      ),
+
+      // -----------------------------------------------------------------------
+      // macOS SCREENSHOT CAPTURE
+      // -----------------------------------------------------------------------
+      tool(
+        'system_screenshot',
+        'Capture a screenshot of your MacBook display and save it to your Desktop.',
+        {
+          target: z.enum(['desktop', 'downloads']).optional().default('desktop').describe('Destination directory.'),
+        },
+        async (args) => {
+          const folder = args.target === 'downloads' ? join(homedir(), 'Downloads') : join(homedir(), 'Desktop')
+          const filename = `Jarvis_Screen_${Date.now()}.png`
+          const fullPath = join(folder, filename)
+          const res = await runShell(`screencapture -x "${fullPath}"`)
+          if (res.ok) {
+            await runAppleScript(`display notification "Screenshot saved to ${args.target}" with title "J.A.R.V.I.S. Screen Capture" sound name "Glass"`)
+            return { content: [{ type: 'text', text: `Screenshot captured and saved to ${fullPath}, sir.` }] }
+          }
+          return { isError: true, content: [{ type: 'text', text: `Failed to capture screenshot: ${res.output}` }] }
+        },
+      ),
+
+      // -----------------------------------------------------------------------
+      // macOS CLIPBOARD SUBSYSTEM
+      // -----------------------------------------------------------------------
+      tool(
+        'system_clipboard',
+        'Read text from or copy text to the macOS system clipboard (pbcopy / pbpaste).',
+        {
+          action: z.enum(['get', 'set']).describe('Whether to read or write clipboard.'),
+          text: z.string().optional().describe('Text to copy when action is "set".'),
+        },
+        async (args) => {
+          if (args.action === 'set') {
+            const safeText = (args.text || '').replace(/"/g, '\\"')
+            await runShell(`echo "${safeText}" | pbcopy`)
+            return { content: [{ type: 'text', text: `Copied text to clipboard, sir.` }] }
+          }
+          const res = await runShell('pbpaste')
+          return { content: [{ type: 'text', text: res.output ? `Clipboard content: "${res.output}"` : 'Clipboard is currently empty.' }] }
+        },
+      ),
+
+      // -----------------------------------------------------------------------
+      // macOS FINDER & FILE SUBSYSTEM
+      // -----------------------------------------------------------------------
+      tool(
+        'system_finder',
+        'macOS Finder operations: empty trash, open common folders (Desktop, Downloads, Documents), or search files using Spotlight.',
+        {
+          action: z.enum(['empty_trash', 'open_folder', 'search_files']).describe('Finder operation.'),
+          folder: z.enum(['desktop', 'downloads', 'documents', 'home', 'applications']).optional().describe('Folder to open.'),
+          query: z.string().optional().describe('File name or query to search with Spotlight.'),
+        },
+        async (args) => {
+          if (args.action === 'empty_trash') {
+            await runAppleScript('tell application "Finder" to empty trash')
+            return { content: [{ type: 'text', text: 'Trash emptied, sir.' }] }
+          }
+          if (args.action === 'open_folder') {
+            const f = args.folder || 'downloads'
+            const map = {
+              desktop: '~/Desktop',
+              downloads: '~/Downloads',
+              documents: '~/Documents',
+              home: '~',
+              applications: '/Applications',
+            }
+            await runShell(`open "${map[f] || '~'}"`)
+            return { content: [{ type: 'text', text: `Opened ${f} in Finder, sir.` }] }
+          }
+          if (args.action === 'search_files') {
+            const q = (args.query || '').trim()
+            if (!q) return { content: [{ type: 'text', text: 'Please specify a file name to search for.' }] }
+            const res = await runShell(`mdfind -name "${q}" | head -n 6`)
+            return { content: [{ type: 'text', text: res.output ? `Files matching "${q}":\n${res.output}` : `No files found matching "${q}".` }] }
+          }
+          return { content: [{ type: 'text', text: 'Finder command processed.' }] }
+        },
+      ),
+
+      // -----------------------------------------------------------------------
+      // macOS NETWORK SUBSYSTEM
+      // -----------------------------------------------------------------------
+      tool(
+        'system_network',
+        'Inspect and control MacBook Wi-Fi, check IP address, and test internet latency.',
+        {
+          action: z.enum(['status', 'wifi_on', 'wifi_off', 'get_ip', 'ping']).describe('Network operation.'),
+        },
+        async (args) => {
+          if (args.action === 'wifi_on') {
+            await runShell('networksetup -setairportpower en0 on')
+            return { content: [{ type: 'text', text: 'Wi-Fi interface en0 powered ON, sir.' }] }
+          }
+          if (args.action === 'wifi_off') {
+            await runShell('networksetup -setairportpower en0 off')
+            return { content: [{ type: 'text', text: 'Wi-Fi interface en0 powered OFF, sir.' }] }
+          }
+          if (args.action === 'get_ip') {
+            const [localIp, pubIp] = await Promise.all([
+              runShell('ipconfig getifaddr en0'),
+              runShell('curl -s --max-time 3 https://ifconfig.me'),
+            ])
+            return { content: [{ type: 'text', text: `Local IP: ${localIp.output.trim() || 'Offline'}\nPublic IP: ${pubIp.output.trim() || 'Unavailable'}` }] }
+          }
+          if (args.action === 'ping') {
+            const res = await runShell('ping -c 3 8.8.8.8')
+            return { content: [{ type: 'text', text: `Network Latency Test:\n${res.output}` }] }
+          }
+          const [pwr, localIp] = await Promise.all([
+            runShell('networksetup -getairportpower en0'),
+            runShell('ipconfig getifaddr en0'),
+          ])
+          return { content: [{ type: 'text', text: `${pwr.output.trim()} · IP: ${localIp.output.trim() || 'Disconnected'}` }] }
+        },
+      ),
+
+      // -----------------------------------------------------------------------
+      // macOS PROCESS MONITOR
+      // -----------------------------------------------------------------------
+      tool(
+        'system_top_processes',
+        'Inspect top resource-consuming processes running on macOS (CPU & Memory).',
+        {
+          limit: z.number().optional().default(5).describe('Number of top processes to return.'),
+        },
+        async (args) => {
+          const limit = Math.min(10, Math.max(3, args.limit || 5))
+          const res = await runShell(`ps -eo %cpu,%mem,comm -r | head -n ${limit + 1}`)
+          return { content: [{ type: 'text', text: `Top ${limit} Active MacBook Processes:\n${res.output}` }] }
+        },
+      ),
     ],
   })
 }
@@ -840,6 +1025,83 @@ export const TASK_TOOLS_DEFINITIONS = [
         cwd: { type: 'STRING', description: 'Working directory.' },
       },
       required: ['command'],
+    },
+  },
+  {
+    name: 'system_dark_mode',
+    description: 'Toggle or set macOS Dark Mode / Light Mode system appearance.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['toggle', 'dark', 'light', 'status'], description: 'Appearance action.' },
+      },
+    },
+  },
+  {
+    name: 'system_power',
+    description: 'Control MacBook power states: lock screen, put system to sleep, sleep display, or check battery status.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['lock', 'sleep', 'display_sleep', 'battery_info'], description: 'Power subsystem operation.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'system_screenshot',
+    description: 'Capture a screenshot of your MacBook screen and save to Desktop or Downloads.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        target: { type: 'STRING', enum: ['desktop', 'downloads'], description: 'Save location (default desktop).' },
+      },
+    },
+  },
+  {
+    name: 'system_clipboard',
+    description: 'Read from (pbpaste) or write to (pbcopy) macOS clipboard.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['get', 'set'], description: 'Clipboard action.' },
+        text: { type: 'STRING', description: 'Text to copy when action is set.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'system_finder',
+    description: 'macOS Finder operations: empty trash, open common folders, or search files using Spotlight (mdfind).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['empty_trash', 'open_folder', 'search_files'], description: 'Finder action.' },
+        folder: { type: 'STRING', enum: ['desktop', 'downloads', 'documents', 'home', 'applications'], description: 'Folder to open.' },
+        query: { type: 'STRING', description: 'File name to search.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'system_network',
+    description: 'Inspect and control MacBook Wi-Fi, IP address, and test internet connection latency.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        action: { type: 'STRING', enum: ['status', 'wifi_on', 'wifi_off', 'get_ip', 'ping'], description: 'Network action.' },
+      },
+      required: ['action'],
+    },
+  },
+  {
+    name: 'system_top_processes',
+    description: 'Inspect top resource-consuming processes running on macOS (CPU & Memory).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        limit: { type: 'NUMBER', description: 'Number of processes (default 5).' },
+      },
     },
   },
 ]
@@ -1181,6 +1443,119 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
         return res.output ? res.output.slice(0, 4000) : 'Command completed successfully with no output.'
       }
       return `Command failed (code ${res.code}):\n${res.output}`
+    }
+
+    case 'system_dark_mode': {
+      if (args.action === 'status') {
+        const res = await runAppleScript('tell application "System Events" to tell appearance preferences to get dark mode')
+        return `macOS Appearance: ${res.output === 'true' ? 'Dark Mode' : 'Light Mode'}.`
+      }
+      let script = 'tell application "System Events" to tell appearance preferences to set dark mode to not dark mode'
+      if (args.action === 'dark') {
+        script = 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+      } else if (args.action === 'light') {
+        script = 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+      }
+      await runAppleScript(script)
+      return `macOS appearance adjusted to ${args.action || 'toggle'}, sir.`
+    }
+
+    case 'system_power': {
+      if (args.action === 'lock') {
+        await runShell('/System/Library/CoreServices/Menu\\ Extras/User.menu/Contents/Resources/CGSession -suspend || pmset displaysleepnow')
+        return 'MacBook display locked, sir.'
+      }
+      if (args.action === 'sleep') {
+        await runAppleScript('tell application "System Events" to sleep')
+        return 'Entering system sleep mode, sir.'
+      }
+      if (args.action === 'display_sleep') {
+        await runShell('pmset displaysleepnow')
+        return 'Display placed into sleep mode, sir.'
+      }
+      const res = await runShell('pmset -g batt')
+      return `MacBook Battery Status:\n${res.output}`
+    }
+
+    case 'system_screenshot': {
+      const folder = args.target === 'downloads' ? join(homedir(), 'Downloads') : join(homedir(), 'Desktop')
+      const filename = `Jarvis_Screen_${Date.now()}.png`
+      const fullPath = join(folder, filename)
+      const res = await runShell(`screencapture -x "${fullPath}"`)
+      if (res.ok) {
+        await runAppleScript(`display notification "Screenshot saved to ${args.target || 'desktop'}" with title "J.A.R.V.I.S. Screen Capture" sound name "Glass"`)
+        return `Screenshot captured and saved to ${fullPath}, sir.`
+      }
+      return `Failed to capture screenshot: ${res.output}`
+    }
+
+    case 'system_clipboard': {
+      if (args.action === 'set') {
+        const safeText = String(args.text || '').replace(/"/g, '\\"')
+        await runShell(`echo "${safeText}" | pbcopy`)
+        return `Text copied to system clipboard, sir.`
+      }
+      const res = await runShell('pbpaste')
+      return res.output ? `Clipboard contents: "${res.output}"` : 'Clipboard is currently empty.'
+    }
+
+    case 'system_finder': {
+      if (args.action === 'empty_trash') {
+        await runAppleScript('tell application "Finder" to empty trash')
+        return 'Trash emptied successfully, sir.'
+      }
+      if (args.action === 'open_folder') {
+        const f = args.folder || 'downloads'
+        const map = {
+          desktop: '~/Desktop',
+          downloads: '~/Downloads',
+          documents: '~/Documents',
+          home: '~',
+          applications: '/Applications',
+        }
+        await runShell(`open "${map[f] || '~'}"`)
+        return `Opened ${f} folder in Finder, sir.`
+      }
+      if (args.action === 'search_files') {
+        const q = String(args.query || '').trim()
+        if (!q) return 'Please specify a search query for Spotlight.'
+        const res = await runShell(`mdfind -name "${q}" | head -n 8`)
+        return res.output ? `Spotlight files matching "${q}":\n${res.output}` : `No files found matching "${q}".`
+      }
+      return 'Finder action complete.'
+    }
+
+    case 'system_network': {
+      if (args.action === 'wifi_on') {
+        await runShell('networksetup -setairportpower en0 on')
+        return 'Wi-Fi interface en0 powered ON, sir.'
+      }
+      if (args.action === 'wifi_off') {
+        await runShell('networksetup -setairportpower en0 off')
+        return 'Wi-Fi interface en0 powered OFF, sir.'
+      }
+      if (args.action === 'get_ip') {
+        const [localIp, pubIp] = await Promise.all([
+          runShell('ipconfig getifaddr en0'),
+          runShell('curl -s --max-time 3 https://ifconfig.me'),
+        ])
+        return `Local IP: ${localIp.output.trim() || 'Offline'}\nPublic IP: ${pubIp.output.trim() || 'Unavailable'}`
+      }
+      if (args.action === 'ping') {
+        const res = await runShell('ping -c 3 8.8.8.8')
+        return `Network Latency Test:\n${res.output}`
+      }
+      const [pwr, localIp] = await Promise.all([
+        runShell('networksetup -getairportpower en0'),
+        runShell('ipconfig getifaddr en0'),
+      ])
+      return `${pwr.output.trim()} · IP: ${localIp.output.trim() || 'Disconnected'}`
+    }
+
+    case 'system_top_processes': {
+      const limit = Math.min(10, Math.max(3, Number(args.limit) || 5))
+      const res = await runShell(`ps -eo %cpu,%mem,comm -r | head -n ${limit + 1}`)
+      return `Top ${limit} Active MacBook Processes:\n${res.output}`
     }
 
     default:

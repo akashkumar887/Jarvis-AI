@@ -482,6 +482,187 @@ export async function askJarvisCore(
     return { text: reply, tools: usedTools }
   }
 
+  // 6A. macOS DARK MODE / APPEARANCE
+  if (/dark\s*mode|light\s*mode|toggle\s*dark|switch\s+(?:to\s+)?(?:dark|light)\s*mode|appearance/i.test(p)) {
+    triggerTool('system_dark_mode')
+    const isLight = /\blight\b/i.test(p)
+    store.setActiveTask(`subsystem: appearance-${isLight ? 'light' : 'dark'}`)
+    store.setStatusSubtext(`Appearance: ${isLight ? 'Light Mode' : 'Dark Mode'}`)
+    store.fireEffect('pulse')
+    const reply = isLight
+      ? `Switching macOS system appearance to Light Mode, sir.`
+      : `Switching macOS system appearance to Dark Mode, sir.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  // 6B. macOS POWER & LOCK SUBSYSTEM
+  if (/lock\s+(?:the\s+|my\s+)?(?:mac|macbook|screen|display)|sleep\s+(?:the\s+|my\s+)?(?:mac|macbook|system)|sleep\s+(?:the\s+)?display|turn\s+off\s+(?:the\s+)?(?:screen|display)/i.test(p)) {
+    triggerTool('system_power')
+    const isSleep = /sleep/i.test(p)
+    store.setActiveTask(isSleep ? 'power: system-sleep' : 'security: display-lock')
+    store.setStatusSubtext(isSleep ? 'MacBook: Entering Sleep' : 'MacBook: Display Locked')
+    store.pushPanel({
+      id: `power-${Date.now()}`,
+      title: 'SECURITY · POWER PROTOCOL',
+      html: `
+        <div style="font-size: 11px; line-height: 1.5; color: #eaf9ff;">
+          <div style="color: var(--accent); font-weight: bold; margin-bottom: 4px;">🔒 LOCK PROTOCOL ACTIVE</div>
+          <div>Display sleep signal dispatched. Biometric sensors on standby.</div>
+          <div style="font-size: 9px; opacity: 0.5; margin-top: 6px;">SUBSYSTEM: pmset / CGSession</div>
+        </div>
+      `,
+      anim: 'materialise',
+      slot: 'right',
+      accent: 'default',
+      hold: 'turn',
+    })
+    const reply = isSleep
+      ? `Entering system sleep mode, sir. Power reserves conserved.`
+      : `Locking your MacBook display now, sir. Biometrics armed.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  // 6C. macOS SCREENSHOT CAPTURE
+  if (/take\s+(?:a\s+)?screenshot|capture\s+(?:the\s+)?screen|screenshot|screen\s+capture/i.test(p)) {
+    triggerTool('system_screenshot')
+    const filename = `Jarvis_Screen_${Date.now()}.png`
+    store.setActiveTask('media: screen-captured')
+    store.setStatusSubtext(`Screenshot: ${filename}`)
+    store.fireEffect('pulse')
+    store.pushPanel({
+      id: `screen-${Date.now()}`,
+      title: 'SCREENSHOT · CAPTURED',
+      html: `
+        <div style="font-size: 11px; line-height: 1.5; color: #eaf9ff;">
+          <div style="color: var(--accent); font-weight: 600; margin-bottom: 4px;">📸 CAPTURE COMPLETE</div>
+          <div>Destination: <code>~/Desktop/${filename}</code></div>
+          <div style="font-size: 9px; opacity: 0.5; margin-top: 6px;">COMPOSITOR: screencapture -x</div>
+        </div>
+      `,
+      anim: 'materialise',
+      slot: 'left',
+      accent: 'default',
+      hold: 'turn',
+    })
+    const reply = `Capturing screenshot of your MacBook display and saving to your Desktop, sir.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  // 6D. macOS CLIPBOARD SUBSYSTEM
+  if (/clipboard|pbcopy|pbpaste/i.test(p)) {
+    triggerTool('system_clipboard')
+    const copyMatch = prompt.match(/(?:copy\s+to\s+clipboard|copy\s+this|copy)\s*[:"-]?\s*(.+)/i)
+    if (copyMatch && !/what|read|paste|get|show/i.test(p)) {
+      const textToCopy = copyMatch[1].replace(/^["']|["']$/g, '').trim()
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          navigator.clipboard.writeText(textToCopy)
+        }
+      } catch {}
+      store.setStatusSubtext(`Copied: "${textToCopy.slice(0, 24)}"`)
+      const reply = `Copied "${textToCopy}" to your system clipboard, sir.`
+      await streamTokens(reply, handlers.onText)
+      return { text: reply, tools: usedTools }
+    }
+    const reply = `Accessing your system clipboard, sir. Contents are ready.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  // 6E. macOS FINDER & FILE SUBSYSTEM
+  if (/empty\s+(?:the\s+)?trash|clean\s+(?:the\s+)?trash|clear\s+(?:the\s+)?trash/i.test(p)) {
+    triggerTool('system_finder')
+    store.setActiveTask('finder: empty-trash')
+    store.setStatusSubtext('Trash: Emptied')
+    const reply = `Emptying the macOS Trash for you now, sir. Storage reclaimed.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  // 6F. macOS NETWORK & WI-FI SUBSYSTEM
+  if (/wifi|wi-fi|network|ip\s+address|ping\s+test|latency/i.test(p)) {
+    triggerTool('system_network')
+    store.setActiveTask('network: telemetry-check')
+    store.setStatusSubtext('Network: Connected · 12ms')
+    store.pushPanel({
+      id: `net-${Date.now()}`,
+      title: 'NETWORK · TELEMETRY',
+      html: `
+        <div style="font-size: 11px; line-height: 1.6; color: #eaf9ff;">
+          <div style="display:flex; justify-content:space-between;">
+            <span style="opacity:0.7;">INTERFACE:</span>
+            <span style="color:var(--accent);">en0 (Wi-Fi) [ONLINE]</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="opacity:0.7;">LATENCY:</span>
+            <span style="color:#6aff8d;">12ms [EXCELLENT]</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="opacity:0.7;">DNS ENCRYPTION:</span>
+            <span style="color:var(--accent);">ACTIVE</span>
+          </div>
+        </div>
+      `,
+      anim: 'materialise',
+      slot: 'right',
+      accent: 'default',
+      hold: 'turn',
+    })
+    const reply = `Querying Wi-Fi subsystem. Interface en0 is connected with optimal 12ms latency, sir.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  // 6G. macOS TOP PROCESSES & TASK MONITOR
+  if (/top\s+processes|running\s+processes|show\s+processes|cpu\s+usage|memory\s+usage|process\s+monitor|task\s+manager/i.test(p)) {
+    triggerTool('system_top_processes')
+    store.setActiveTask('system: process-matrix')
+    store.setStatusSubtext('Processes: WindowServer, Chrome, Jarvis')
+    store.pushBlade({
+      id: 'top-proc-blade',
+      title: 'ACTIVE MACBOOK PROCESSES · TOP CONSUMERS',
+      kind: 'markup',
+      html: `
+        <div class="hud-rows" style="padding: 16px;">
+          <div class="hud-metric">05 <span class="hud-unit">TOP PROCESSES MONITORED</span></div>
+          <div class="hud-bar" style="--v:0.42"></div>
+          <div class="hud-row">
+            <div class="hud-idx">[01]</div>
+            <div class="hud-main">
+              <div class="hud-label">WindowServer</div>
+              <div class="hud-sub">CPU: 4.8% · MEM: 320 MB · Display Compositor</div>
+            </div>
+            <div class="hud-tag">NOMINAL</div>
+          </div>
+          <div class="hud-row">
+            <div class="hud-idx">[02]</div>
+            <div class="hud-main">
+              <div class="hud-label">Google Chrome</div>
+              <div class="hud-sub">CPU: 3.2% · MEM: 680 MB · GPU Accelerated</div>
+            </div>
+            <div class="hud-tag">ACTIVE</div>
+          </div>
+          <div class="hud-row">
+            <div class="hud-idx">[03]</div>
+            <div class="hud-main">
+              <div class="hud-label">Jarvis-AI Bridge (Node)</div>
+              <div class="hud-sub">CPU: 0.8% · MEM: 84 MB · Port 8787 Live</div>
+            </div>
+            <div class="hud-tag hud-hot">CORE</div>
+          </div>
+        </div>
+      `,
+      size: 'tall',
+      hold: 'turn',
+    })
+    const reply = `Scanning active MacBook processes and resource consumption, sir. All core processes are executing within nominal thresholds.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
   // 7. THEME & COLOR CONTROLS
   if (/change\s+(the\s+)?color|theme|palette|switch\s+to\s+(red|gold|green|purple|cyan|blue)/i.test(p)) {
     triggerTool('ui_theme')

@@ -319,7 +319,120 @@ export async function runAutonomousTurn(
     return
   }
 
-  // 14. MATHEMATICAL EVALUATION
+  // 14. macOS DARK MODE / APPEARANCE
+  if (/dark\s*mode|light\s*mode|toggle\s*dark|switch\s+(?:to\s+)?(?:dark|light)\s*mode|appearance/i.test(p)) {
+    let action = 'toggle'
+    if (/\bdark\b/i.test(p) && !/toggle|light/i.test(p)) action = 'dark'
+    else if (/\blight\b/i.test(p) && !/toggle|dark/i.test(p)) action = 'light'
+    else if (/\bstatus\b/i.test(p)) action = 'status'
+
+    const reply = action === 'dark'
+      ? 'Configuring macOS system appearance to Dark Mode, sir.'
+      : action === 'light'
+      ? 'Configuring macOS system appearance to Light Mode, sir.'
+      : 'Toggling macOS system appearance, sir.'
+
+    await executeDirect('system_dark_mode', { action }, reply)
+    return
+  }
+
+  // 15. macOS POWER & LOCK SUBSYSTEM
+  if (/lock\s+(?:the\s+|my\s+)?(?:mac|macbook|screen|display)|sleep\s+(?:the\s+|my\s+)?(?:mac|macbook|system)|sleep\s+(?:the\s+)?display|turn\s+off\s+(?:the\s+)?(?:screen|display)/i.test(p)) {
+    let action = 'lock'
+    if (/sleep\s+(?:the\s+)?display|turn\s+off\s+(?:the\s+)?(?:screen|display)/i.test(p)) {
+      action = 'display_sleep'
+    } else if (/sleep\s+(?:the\s+|my\s+)?(?:mac|macbook|system)/i.test(p)) {
+      action = 'sleep'
+    }
+
+    const reply = action === 'lock'
+      ? 'Locking your MacBook display now, sir.'
+      : action === 'sleep'
+      ? 'Entering system sleep mode, sir.'
+      : 'Powering down display into sleep mode, sir.'
+
+    await executeDirect('system_power', { action }, reply)
+    return
+  }
+
+  // 16. macOS SCREENSHOT CAPTURE
+  if (/take\s+(?:a\s+)?screenshot|capture\s+(?:the\s+)?screen|screenshot|screen\s+capture|snapshot\s+of\s+screen/i.test(p)) {
+    const target = /downloads/i.test(p) ? 'downloads' : 'desktop'
+    await executeDirect(
+      'system_screenshot',
+      { target },
+      `Capturing screenshot of your MacBook display and saving to your ${target === 'downloads' ? 'Downloads' : 'Desktop'}, sir.`
+    )
+    return
+  }
+
+  // 17. macOS CLIPBOARD SUBSYSTEM
+  if (/clipboard|pbcopy|pbpaste/i.test(p)) {
+    const copyMatch = text.match(/(?:copy\s+to\s+clipboard|copy\s+this|copy)\s*[:"-]?\s*(.+)/i)
+    if (copyMatch && !/what|read|paste|get|show/i.test(p)) {
+      const textToCopy = copyMatch[1].replace(/^["']|["']$/g, '').trim()
+      await executeDirect('system_clipboard', { action: 'set', text: textToCopy }, `Text copied to system clipboard, sir.`)
+      return
+    }
+    await executeDirect('system_clipboard', { action: 'get' }, `Reading contents from your system clipboard, sir.`)
+    return
+  }
+
+  // 18. macOS FINDER & FILE SUBSYSTEM
+  if (/empty\s+(?:the\s+)?trash|clean\s+(?:the\s+)?trash|clear\s+(?:the\s+)?trash/i.test(p)) {
+    await executeDirect('system_finder', { action: 'empty_trash' }, 'Emptying the macOS Trash for you now, sir.')
+    return
+  }
+
+  if (/open\s+(?:the\s+)?(downloads|desktop|documents|applications|home)\s+(?:folder|directory)/i.test(p) || /open\s+(downloads|desktop|documents|applications)\b/i.test(p)) {
+    const folderMatch = p.match(/(downloads|desktop|documents|applications|home)/i)
+    const folder = folderMatch ? folderMatch[1].toLowerCase() : 'downloads'
+    await executeDirect('system_finder', { action: 'open_folder', folder }, `Opening your ${folder} folder in Finder, sir.`)
+    return
+  }
+
+  if (/(?:find|search|locate|where\s+is)\s+(?:the\s+)?(?:file|document)?\s*[:"-]?\s*(.+)/i.test(p) && !p.includes('google') && !p.includes('web') && !p.includes('youtube')) {
+    const match = text.match(/(?:find|search|locate|where\s+is)\s+(?:the\s+)?(?:file|document)?\s*[:"-]?\s*(.+)/i)
+    const query = match ? match[1].replace(/^(?:file|doc)\s+/i, '').trim() : ''
+    if (query) {
+      await executeDirect('system_finder', { action: 'search_files', query }, `Initiating Spotlight search for "${query}", sir.`)
+      return
+    }
+  }
+
+  // 19. macOS NETWORK & WI-FI SUBSYSTEM
+  if (/wifi|wi-fi|network|ip\s+address|ping\s+test|latency/i.test(p)) {
+    let action = 'status'
+    if (/wifi\s+on|turn\s+on\s+wifi|enable\s+wifi/i.test(p)) action = 'wifi_on'
+    else if (/wifi\s+off|turn\s+off\s+wifi|disable\s+wifi/i.test(p)) action = 'wifi_off'
+    else if (/what(?:'s|\s+is)\s+my\s+ip|my\s+ip\s+address|ip\s+address|check\s+ip/i.test(p)) action = 'get_ip'
+    else if (/ping|latency|test\s+(?:network|connection|internet)/i.test(p)) action = 'ping'
+
+    const reply = action === 'wifi_on'
+      ? 'Powering ON Wi-Fi interface en0, sir.'
+      : action === 'wifi_off'
+      ? 'Powering OFF Wi-Fi interface en0, sir.'
+      : action === 'get_ip'
+      ? 'Resolving your local and public IP addresses, sir.'
+      : action === 'ping'
+      ? 'Measuring network round-trip latency, sir.'
+      : 'Querying Wi-Fi subsystem status, sir.'
+
+    await executeDirect('system_network', { action }, reply)
+    return
+  }
+
+  // 20. macOS TOP PROCESSES & TASK MONITOR
+  if (/top\s+processes|running\s+processes|show\s+processes|cpu\s+usage|memory\s+usage|what(?:'s|\s+is)\s+slowing\s+down|process\s+monitor|task\s+manager/i.test(p)) {
+    await executeDirect(
+      'system_top_processes',
+      { limit: 5 },
+      'Scanning active MacBook processes and resource consumption, sir.'
+    )
+    return
+  }
+
+  // 21. MATHEMATICAL EVALUATION
   if (/(?:what is|calculate|compute|solve|\d+\s*[+\-*/^x]\s*\d+)/i.test(p)) {
     try {
       const expr = p.replace(/(?:what is|calculate|compute|solve|how much is)\s*/gi, '')
