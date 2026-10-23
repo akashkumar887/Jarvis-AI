@@ -165,26 +165,43 @@ const MAX_UNSPOKEN = 220
 
 const VOICE_PREF_KEY = 'jarvis.voice'
 
+let currentAudio: HTMLAudioElement | null = null
+
+/**
+ * Returns true if speech synthesis or audio is actively playing or in tail decay.
+ * The voice listener uses this to block microphone self-talk/echo feedback.
+ */
+export function isSpeakingAudio(): boolean {
+  if (Boolean(speaking) || Date.now() < recentUntil) return true
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window && window.speechSynthesis.speaking) {
+    return true
+  }
+  if (currentAudio && !currentAudio.paused && !currentAudio.ended) {
+    return true
+  }
+  return false
+}
+
 /**
  * Rank installed voices by how close they are to the character: a British
  * male, low and level, not a novelty voice.
- *
- * The big win on macOS is the Enhanced/Premium variant of Daniel. The stock
- * "Daniel" is a compact voice from a decade ago and sounds it; the Enhanced
- * download is free (System Settings → Accessibility → Spoken Content → System
- * Voice → Manage Voices) and once installed it appears here automatically.
  */
 function score(v: SpeechSynthesisVoice): number {
   const n = v.name.toLowerCase()
   let s = 0
 
-  // The macOS British male, and the closest thing to the character available
-  // without leaving the machine.
-  if (n.startsWith('daniel')) s += 100
-  else if (n.includes('google uk english male')) s += 85
-  else if (/\b(oliver|arthur|jamie|malcolm)\b/.test(n)) s += 80
-  // Newer macOS en-GB male voices — casual, but serviceable.
-  else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 40
+  // Refined British male voices (close to Paul Bettany's J.A.R.V.I.S.)
+  if (/\b(oliver|arthur|jamie|malcolm|george)\b/.test(n)) s += 130
+  else if (n.includes('google uk english male')) s += 120
+  else if (/\b(reed|rocko|eddy)\b/.test(n)) s += 110
+  else if (n.includes('rishi')) s += 90
+  else if (n.startsWith('daniel')) {
+    // Only boost Daniel if it is the Enhanced/Premium variant; stock compact is metallic
+    if (n.includes('premium') || n.includes('enhanced')) s += 115
+    else s += 65
+  } else if (/\b(alex|lee)\b/.test(n)) {
+    s += 50
+  }
 
   // Higher-quality variants of whatever matched above.
   if (n.includes('premium')) s += 30
@@ -263,6 +280,25 @@ export function cycleVoice(): string {
   localStorage.setItem(VOICE_PREF_KEY, next.name)
   cachedVoice = next
   return next.name
+}
+
+/** Set a specific voice by full name or partial match */
+export function setVoice(name: string): SpeechSynthesisVoice | null {
+  if (typeof speechSynthesis === 'undefined') return null
+  const all = candidateVoices().concat(speechSynthesis.getVoices())
+  const q = name.toLowerCase().trim()
+  const hit = all.find((v) => v.name.toLowerCase().includes(q))
+  if (hit) {
+    localStorage.setItem(VOICE_PREF_KEY, hit.name)
+    cachedVoice = hit
+    return hit
+  }
+  return null
+}
+
+/** List all usable candidate voice names for display */
+export function getAvailableVoiceNames(): string[] {
+  return candidateVoices().map((v) => v.name)
 }
 
 // Voices load asynchronously in Chrome; the first call usually returns nothing.
@@ -449,8 +485,8 @@ export function createSpeaker(): Speaker {
       const voice = pickVoice()
       if (voice) u.voice = voice
       u.lang = voice?.lang ?? 'en-GB'
-      u.rate = 0.95
-      u.pitch = 0.95
+      u.rate = 1.02
+      u.pitch = 0.96
 
       let raf = 0
       let t = 0

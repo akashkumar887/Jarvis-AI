@@ -10,22 +10,6 @@ interface CommandBarProps {
   disabled?: boolean
 }
 
-const QUICK_ACTIONS = [
-  { label: '🎬 YouTube on Chrome', cmd: 'Open YouTube on Chrome' },
-  { label: '💬 WhatsApp Message', cmd: 'Send message on WhatsApp' },
-  { label: '✉️ Make & Send Email', cmd: 'Make email to contact@starkindustries.com with subject Greetings saying All systems are online and operational' },
-  { label: '🌙 Dark Mode', cmd: 'Toggle Dark Mode' },
-  { label: '🔒 Lock Mac', cmd: 'Lock my MacBook' },
-  { label: '📸 Screenshot', cmd: 'Take a screenshot' },
-  { label: '📊 Top Processes', cmd: 'Top processes' },
-  { label: '🗑️ Empty Trash', cmd: 'Empty trash' },
-  { label: '📶 Wi-Fi Status', cmd: 'Check Wi-Fi and IP' },
-  { label: '🎵 Open Spotify', cmd: 'Open Spotify' },
-  { label: '⚡ Mac Diagnostics', cmd: 'System diagnostics report' },
-  { label: '📋 My Directives', cmd: 'List my directives' },
-  { label: '🔊 Volume 80%', cmd: 'Set volume to 80' },
-]
-
 export function CommandBar({ onSubmit, onToggleMic, phase = 'dormant', disabled }: CommandBarProps) {
   const [input, setInput] = useState('')
 
@@ -36,30 +20,11 @@ export function CommandBar({ onSubmit, onToggleMic, phase = 'dormant', disabled 
     setInput('')
   }
 
-  const handleQuickClick = (cmd: string) => {
-    if (disabled) return
-    onSubmit(cmd)
-  }
-
   const isListening = phase === 'listening'
   const isSpeaking = phase === 'speaking'
 
   return (
     <div className="clean-command-dock" role="region" aria-label="J.A.R.V.I.S. Command Center">
-      {/* Quick Action Chips */}
-      <div className="clean-quick-chips">
-        {QUICK_ACTIONS.map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            className="clean-chip-btn"
-            onClick={() => handleQuickClick(item.cmd)}
-            disabled={disabled}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
 
       {/* Main Unified Input Pill */}
       <div className={`clean-command-pill ${isListening ? 'listening' : ''} ${isSpeaking ? 'speaking' : ''}`}>

@@ -298,23 +298,36 @@ function isEcho(heard: string, spoken: string): boolean {
   if (!spoken) return false
   if (OVERRIDE.test(heard)) return false
 
-  const all = norm(heard).split(' ').filter(Boolean)
+  const cleanHeard = norm(heard)
+  const cleanSpoken = norm(spoken)
+  if (!cleanHeard) return true
+
+  // Direct substring: if the heard fragment was contained in what was just spoken out loud
+  if (cleanSpoken.includes(cleanHeard)) return true
+
+  const all = cleanHeard.split(' ').filter(Boolean)
   if (!all.length) return true
 
-  const mine = new Set(norm(spoken).split(' '))
+  const mine = new Set(cleanSpoken.split(' '))
   const content = all.filter((w) => !STOP.has(w))
 
-  // Nothing distinctive was said at all, so there is no strong evidence either
-  // way. Demand a total match before discarding it — the cost of dropping a
-  // real question is much higher than the cost of one stray echo getting in.
+  // Single word heard: if it was spoken or is a substring of spoken text or is a short fragment
+  if (all.length === 1) {
+    const singleWord = all[0]
+    if (mine.has(singleWord) || cleanSpoken.includes(singleWord) || singleWord.length <= 3) {
+      return true
+    }
+  }
+
   if (content.length < 2) {
-    if (all.length < 2) return false
-    return all.every((w) => mine.has(w))
+    return all.every((w) => mine.has(w) || cleanSpoken.includes(w))
   }
 
   let hits = 0
-  for (const w of content) if (mine.has(w)) hits++
-  return hits / content.length >= 0.6
+  for (const w of content) {
+    if (mine.has(w) || cleanSpoken.includes(w)) hits++
+  }
+  return hits / content.length >= 0.5
 }
 
 // ---------------------------------------------------------------------------
@@ -651,6 +664,10 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     const mode = h.mode()
     reset()
     if (!text || mode === 'deaf') return
+    if (mode === 'guard' && !OVERRIDE.test(text)) {
+      drop('guarded during speech output')
+      return
+    }
     if (isEcho(text, speakingNow())) {
       drop('echo of his own voice')
       return
@@ -700,6 +717,12 @@ function startBrowserVoice(h: VoiceHandlers): Voice {
     }
     const heard = `${settled}${fresh} ${interim}`.replace(/\s+/g, ' ').trim()
     if (!heard) return
+
+    if (mode === 'guard' && !OVERRIDE.test(heard)) {
+      interim = ''
+      return
+    }
+
     if (isEcho(`${fresh} ${interim}`, speakingNow())) {
       interim = ''
       return

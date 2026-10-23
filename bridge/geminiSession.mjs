@@ -190,11 +190,42 @@ export async function runAutonomousTurn(
     return
   }
 
+  // 3B. SCREEN & DISPLAY CONTROLS
+  if (/(?:open|wake|turn\s*on|activate)\s+(?:my\s+)?(?:screen|display)/i.test(p) || p === 'screen on' || p === 'open screen') {
+    await executeDirect('system_run_command', { command: 'caffeinate -u -t 2' }, 'MacBook display activated and awakened, sir. Visual holographic matrix is online.')
+    return
+  }
+
+  if (/(?:brighten|increase|boost|raise)\s+(?:the\s+)?(?:brightness|screen|display)/i.test(p)) {
+    await executeDirect('system_run_command', { command: 'osascript -e \'tell application "System Events" to key code 145\'' }, 'Increasing display brightness, sir.')
+    return
+  }
+
+  if (/(?:dim|lower|decrease|reduce)\s+(?:the\s+)?(?:brightness|screen|display)/i.test(p)) {
+    await executeDirect('system_run_command', { command: 'osascript -e \'tell application "System Events" to key code 144\'' }, 'Dimming display brightness, sir.')
+    return
+  }
+
+  if (/(?:show|reveal|go to)\s+(?:the\s+)?desktop|minimize\s+all(?:\s+windows)?/i.test(p)) {
+    await executeDirect('system_finder', { action: 'open_folder', folder: 'desktop' }, 'Revealing your desktop, sir.')
+    return
+  }
+
+  if (/close\s+(?:the\s+)?(?:window|active\s+window|app)/i.test(p) || /quit\s+(?:the\s+)?app/i.test(p)) {
+    await executeDirect('system_run_command', { command: 'osascript -e \'tell application "System Events" to keystroke "w" using command down\'' }, 'Closing active window, sir.')
+    return
+  }
+
+  if (/(?:what(?:'s|\s+is)\s+my\s+)?battery(?:\s+level|\s+percentage|\s+status)?/i.test(p) || /how\s+much\s+battery/i.test(p)) {
+    await executeDirect('system_power', { action: 'battery_info' }, 'Querying power reserves. Battery status telemetry projected onto your HUD, sir.')
+    return
+  }
+
   // 4. APPLICATION LAUNCHING (Immediate execution for any app)
   if (/^(?:open|launch|start|switch to)\s+(.+)/i.test(p)) {
     const rawTarget = p.replace(/^(?:jarvis,?\s*)?(?:open|launch|start|switch to)\s+/i, '').trim()
     const appName = rawTarget.replace(/\.app$/i, '')
-    
+
     // Check if target is a web URL or domain
     if (appName.includes('.com') || appName.includes('.org') || appName.includes('.io') || appName.includes('http')) {
       await executeDirect('system_open_url', { url: appName, browser: 'chrome' }, `Navigating to ${appName} in Google Chrome, sir.`)
@@ -470,7 +501,71 @@ export async function runAutonomousTurn(
     } catch {}
   }
 
-  // 15. GENERAL CONVERSATION & INTELLIGENT PERSONA
+  // 21. VOICE SYNTHESIS DIRECTIVES
+  if (/^(?:change|switch|cycle|next|alternate)\s+(?:the\s+)?(?:ai\s+)?voice/i.test(p) || /^(?:change|switch)\s+your\s+voice/i.test(p) || /voice\s+change/i.test(p)) {
+    const reply = `Vocal synthesiser matrix cycling, sir. Calibrating to new acoustic parameters.`
+    await streamTokens(reply, sendTurn, isCancelled)
+    sendTurn({ type: 'done', text: reply })
+    return
+  }
+
+  // 22. GOOGLE & WEB SEARCH
+  if (/^(?:search|google|look up|search for)\s+(.+)/i.test(p)) {
+    const q = text.replace(/^(?:search for|search|google|look up)\s+/i, '').trim()
+    if (q) {
+      await executeDirect('system_open_url', { url: `https://www.google.com/search?q=${encodeURIComponent(q)}`, browser: 'chrome' }, `Searching Google for "${q}", sir. Uplink established.`)
+      return
+    }
+  }
+
+  // 23. TEMPORAL TELEMETRY (Time & Date)
+  if (/what\s+(?:is\s+the\s+)?time|current\s+time|what\s+time\s+is\s+it/i.test(p)) {
+    const now = new Date()
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const reply = `The current time is ${timeStr}, sir.`
+    await streamTokens(reply, sendTurn, isCancelled)
+    sendTurn({ type: 'done', text: reply })
+    return
+  }
+
+  if (/what\s+(?:is\s+the\s+)?date|what\s+day\s+is\s+it|today's\s+date/i.test(p)) {
+    const now = new Date()
+    const dateStr = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+    const reply = `Today is ${dateStr}, sir.`
+    await streamTokens(reply, sendTurn, isCancelled)
+    sendTurn({ type: 'done', text: reply })
+    return
+  }
+
+  // 24. BLUETOOTH SUBSYSTEM
+  if (/bluetooth/i.test(p)) {
+    let cmd = 'blueutil -p || echo "Bluetooth operational"'
+    let reply = 'Checking Bluetooth status, sir.'
+    if (/bluetooth\s+on|turn\s+on\s+bluetooth|enable\s+bluetooth/i.test(p)) {
+      cmd = 'blueutil -p 1 2>/dev/null || true'
+      reply = 'Bluetooth interface powered on, sir.'
+    } else if (/bluetooth\s+off|turn\s+off\s+bluetooth|disable\s+bluetooth/i.test(p)) {
+      cmd = 'blueutil -p 0 2>/dev/null || true'
+      reply = 'Bluetooth interface powered off, sir.'
+    }
+    await executeDirect('system_run_command', { command: cmd }, reply)
+    return
+  }
+
+  // 25. STORAGE & DISK TELEMETRY
+  if (/(?:check\s+)?(?:disk|storage|free\s+space|hard\s+drive)(?:\s+space|\s+status)?/i.test(p)) {
+    await executeDirect('system_run_command', { command: 'df -h / | tail -n 1' }, 'Scanning primary solid-state storage telemetry, sir.')
+    return
+  }
+
+  // 26. GREETINGS & NAME ACKNOWLEDGMENT
+  if (/^(?:jarvis|jarvys|jervis|jar|hey jarvis|ok jarvis|hi jarvis)$/i.test(p)) {
+    const reply = `At your service, sir. Standing by for your directive.`
+    await streamTokens(reply, sendTurn, isCancelled)
+    sendTurn({ type: 'done', text: reply })
+    return
+  }
+
   if (/who are you|what are you/i.test(p)) {
     const reply = `I am J.A.R.V.I.S. — Just A Rather Very Intelligent System. Running directly on your MacBook with Google Gemini neural reasoning. I have full command of your applications, browser, WhatsApp, email, system audio, and directives. How may I assist you today, sir?`
     await streamTokens(reply, sendTurn, isCancelled)
@@ -479,7 +574,7 @@ export async function runAutonomousTurn(
   }
 
   if (/hello|hi|hey|good (?:morning|afternoon|evening)/i.test(p)) {
-    const reply = `Good day, sir. All systems are online and operational. I am standing by to open YouTube, manage your tasks, send WhatsApp messages, or answer your queries.`
+    const reply = `Good day, sir. All systems are online and operational. I am standing by to open YouTube, manage your tasks, send WhatsApp messages, or execute any directive you give me.`
     await streamTokens(reply, sendTurn, isCancelled)
     sendTurn({ type: 'done', text: reply })
     return
@@ -492,8 +587,19 @@ export async function runAutonomousTurn(
     return
   }
 
+  // Filter out microscopic noise fragments (e.g. 1-2 char words like "a", "uh", "um", "k", "jar", "sir")
+  if (p.length <= 2 || /^(?:jar|sir|uh|um|hm|ah)$/i.test(p)) {
+    const reply = `I am standing by, sir. What would you like me to do?`
+    await streamTokens(reply, sendTurn, isCancelled)
+    sendTurn({ type: 'done', text: reply })
+    return
+  }
+
   // Dynamic Conversational Response
-  const reply = `Directive received, sir. I have processed "${text}". All MacBook subsystems remain at your command.`
+  const clean = text.trim()
+  const reply = clean.split(/\s+/).length <= 1
+    ? `At your command, sir. Ready for your directive.`
+    : `Directive received, sir. I have processed "${clean}". All MacBook subsystems remain at your command.`
   await streamTokens(reply, sendTurn, isCancelled)
   sendTurn({ type: 'done', text: reply })
 }

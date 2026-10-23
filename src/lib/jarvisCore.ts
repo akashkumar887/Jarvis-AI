@@ -358,6 +358,51 @@ export async function askJarvisCore(
     return { text: reply, tools: usedTools }
   }
 
+  // 4B. SCREEN & DISPLAY CONTROLS
+  if (/(?:open|wake|turn\s*on|activate)\s+(?:my\s+)?(?:screen|display)/i.test(p) || p === 'screen on' || p === 'open screen') {
+    triggerTool('system_display')
+    store.setActiveTask('display: screen-active')
+    store.setStatusSubtext('Display: Active & Online')
+    store.fireEffect('pulse')
+    const reply = `MacBook display activated and awakened, sir. Visual holographic matrix is online.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  if (/(?:brighten|increase|boost|raise)\s+(?:the\s+)?(?:brightness|screen|display)/i.test(p)) {
+    triggerTool('system_display')
+    store.setStatusSubtext('Brightness: 100%')
+    const reply = `Increasing display brightness to maximum, sir.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  if (/(?:dim|lower|decrease|reduce)\s+(?:the\s+)?(?:brightness|screen|display)/i.test(p)) {
+    triggerTool('system_display')
+    store.setStatusSubtext('Brightness: 50%')
+    const reply = `Dimming display brightness, sir.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  if (/(?:show|reveal|go to)\s+(?:the\s+)?desktop|minimize\s+all(?:\s+windows)?/i.test(p)) {
+    triggerTool('system_finder')
+    store.setActiveTask('finder: desktop-revealed')
+    store.setStatusSubtext('Desktop: Active')
+    const reply = `Revealing your desktop, sir.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  if (/(?:what(?:'s|\s+is)\s+my\s+)?battery(?:\s+level|\s+percentage|\s+status)?/i.test(p) || /how\s+much\s+battery/i.test(p)) {
+    triggerTool('system_diagnostics')
+    store.setActiveTask('power: battery-telemetry')
+    store.setStatusSubtext('Battery: 98% AC Connected')
+    const reply = `Battery reserves are nominal at 98%, sir. Connected to high-efficiency power bus.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
   // 5. OPEN WEBSITES / WEB APPS
   if (/^open\s+|^(go to|launch|navigate to)\s+/i.test(p)) {
     triggerTool('browser_navigate')
@@ -933,6 +978,18 @@ export async function askJarvisCore(
   }
 
   // 17. GREETINGS & STATUS INQUIRIES
+  if (/^(?:jarvis|jarvys|jervis|jar|hey jarvis|ok jarvis|hi jarvis)$/i.test(p)) {
+    const reply = `At your service, sir. Standing by for your directive.`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
+  if (p.length <= 2) {
+    const reply = `I am standing by, sir. What would you like me to do?`
+    await streamTokens(reply, handlers.onText)
+    return { text: reply, tools: usedTools }
+  }
+
   if (/^(hello|hi|hey|good\s+(morning|afternoon|evening)|howdy)\b/i.test(p)) {
     const hours = new Date().getHours()
     const tod = hours < 12 ? 'morning' : hours < 18 ? 'afternoon' : 'evening'

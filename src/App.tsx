@@ -6,7 +6,13 @@ import { Ignition } from './ui/Ignition'
 import { Diagnostics } from './ui/Diagnostics'
 import { useStore } from './store'
 import { startVoice, type Voice, type VoiceMode } from './lib/voice'
-import { createSpeaker, cycleVoice, currentVoiceName } from './lib/tts'
+import {
+  createSpeaker,
+  cycleVoice,
+  setVoice,
+  currentVoiceName,
+  isSpeakingAudio,
+} from './lib/tts'
 import * as sfx from './lib/sfx'
 import * as music from './lib/music'
 import * as hands from './lib/hands'
@@ -63,7 +69,7 @@ const newId = () =>
 
 /** The same mishearings voice.ts accepts for the wake word — otherwise a turn
  *  that woke him as "travis" gets that word sent on to the model as a question. */
-const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv)'
+const NAME = '(?:jarvis|jarvys|jervis|travis|jarviss|java\'s|jarv|jar)'
 /** A bare vocative — "Jarvis", "hey jarvis" — with nothing asked. */
 const BARE_NAME = new RegExp(`^(?:hey|hi|ok|okay|yo)?\\s*${NAME}[\\s,.!?]*$`, 'i')
 /** A leading vocative on a real command: "Jarvis, what's the weather". */
@@ -146,6 +152,56 @@ export default function App() {
     let started = false
     let filled = false
 
+    // Voice switching & selection commands
+    if (
+      /^(?:change|switch|cycle|next|alternate)\s+(?:the\s+)?(?:ai\s+)?voice/i.test(said.trim()) ||
+      /^(?:change|switch)\s+your\s+voice/i.test(said.trim()) ||
+      /^use\s+(?:another|different)\s+voice/i.test(said.trim())
+    ) {
+      const nextName = cycleVoice()
+      store.getState().setVoice(nextName)
+      const cleanVoice = nextName.replace(/\(.*?\)/g, '').trim()
+      const reply = `Vocal synthesiser matrix switched to ${cleanVoice}, sir. All subsystems remain at your command.`
+      store.getState().setPhase('speaking')
+      store.getState().pushTurn({ id: turnId, role: 'jarvis', text: reply })
+      spk.say(reply)
+      await spk.end()
+      sfx.play('done')
+      return
+    }
+
+    const setVoiceMatch = said.trim().match(/^(?:set|change|switch)\s+(?:the\s+)?(?:ai\s+)?voice\s+to\s+(.+)/i)
+    if (setVoiceMatch) {
+      const target = setVoiceMatch[1].trim()
+      const hit = setVoice(target)
+      if (hit) {
+        store.getState().setVoice(hit.name)
+        const cleanVoice = hit.name.replace(/\(.*?\)/g, '').trim()
+        const reply = `Vocal synthesiser matrix calibrated to ${cleanVoice}, sir. How does this sound?`
+        store.getState().setPhase('speaking')
+        store.getState().pushTurn({ id: turnId, role: 'jarvis', text: reply })
+        spk.say(reply)
+        await spk.end()
+        sfx.play('done')
+        return
+      }
+    }
+
+    // Clear HUD / display command
+    if (/^(?:clear\s+(?:the\s+)?(?:screen|hud|transcript|turns)|reset\s+hud)$/i.test(said.trim())) {
+      s.clearPanels()
+      s.clearBlades()
+      s.setCaption('')
+      store.setState({ turns: [] })
+      const reply = `Display buffer cleared, sir. Standing by.`
+      store.getState().setPhase('speaking')
+      store.getState().pushTurn({ id: turnId, role: 'jarvis', text: reply })
+      spk.say(reply)
+      await spk.end()
+      sfx.play('done')
+      return
+    }
+
     try {
       const { text } = await ask(said, history.current, {
         onText: (delta) => {
@@ -210,10 +266,19 @@ export default function App() {
         sfx.duck(false)
         music.duck(false)
         store.getState().setActiveTool(null)
-        music.working(false)
-        // Stay open. Having to say his name again to add one more sentence is
-        // the difference between a conversation and a vending machine.
-        listen(FOLLOW_UP_MS)
+        // Wait until audio output has completely finished and room acoustic reflections decay
+        const waitForSilence = () => {
+          if (isSpeakingAudio()) {
+            setTimeout(waitForSilence, 120)
+            return
+          }
+          setTimeout(() => {
+            if (!stale()) {
+              listen(FOLLOW_UP_MS)
+            }
+          }, 350)
+        }
+        waitForSilence()
       }
     }
   }
@@ -222,6 +287,9 @@ export default function App() {
 
   /** What the voice loop should do with what it hears, derived from phase. */
   const mode = (): VoiceMode => {
+    // If the system is currently outputting audio, treat incoming microphone input as guard/echo
+    if (isSpeakingAudio()) return 'guard'
+
     switch (store.getState().phase) {
       case 'offline':
       case 'boot':
@@ -294,13 +362,13 @@ export default function App() {
     if (phase === 'offline' || phase === 'boot' || phase === 'dormant') return
 
     // People keep using his name as a vocative once they're already talking to
-    // him. Strip it rather than sending "jarvis" to the model as a question.
-    if (BARE_NAME.test(text)) {
+    // him, or the mic heard a stray snippet ("jar", "sir", "uh").
+    if (BARE_NAME.test(text) || /^(?:jar|sir|uh|um|hm|ah|hey|ok|okay)$/i.test(text.trim())) {
       listen(AWAIT_SPEECH_MS)
       return
     }
     const said = text.replace(LEADING_NAME, '').trim()
-    if (!said) {
+    if (!said || /^(?:jar|sir|uh|um|hm|ah)$/i.test(said) || said.length <= 1) {
       listen(AWAIT_SPEECH_MS)
       return
     }

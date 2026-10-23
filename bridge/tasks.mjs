@@ -1218,6 +1218,10 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
 
     case 'system_open_app': {
       const app = String(args.app_name || '').trim()
+      if (/^(?:my\s+)?(?:screen|display)$/i.test(app)) {
+        await runShell('caffeinate -u -t 2')
+        return 'MacBook display powered and awakened, sir.'
+      }
       const APP_ALIASES = {
         vscode: 'Visual Studio Code',
         code: 'Visual Studio Code',
@@ -1228,8 +1232,12 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
         calendar: 'Calendar',
         reminders: 'Reminders',
         settings: 'System Settings',
+        preferences: 'System Settings',
         terminal: 'Terminal',
+        iterm: 'iTerm',
         finder: 'Finder',
+        files: 'Finder',
+        desktop: 'Finder',
         spotify: 'Spotify',
         slack: 'Slack',
         whatsapp: 'WhatsApp',
@@ -1237,12 +1245,21 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
         email: 'Mail',
         safari: 'Safari',
         calculator: 'Calculator',
+        photos: 'Photos',
+        maps: 'Maps',
+        messages: 'Messages',
+        imessage: 'Messages',
+        camera: 'Photo Booth',
+        photobooth: 'Photo Booth',
+        activitymonitor: 'Activity Monitor',
+        taskmanager: 'Activity Monitor',
+        appstore: 'App Store',
       }
       if (app.toLowerCase().includes('youtube')) {
         await runShell('open -a "Google Chrome" "https://www.youtube.com" || open "https://www.youtube.com"')
         return 'YouTube is now open in Google Chrome.'
       }
-      const target = APP_ALIASES[app.toLowerCase()] || app
+      const target = APP_ALIASES[app.toLowerCase().replace(/\s+/g, '')] || APP_ALIASES[app.toLowerCase()] || app
       const res = await runShell(`open -a "${target}"`)
       if (res.ok) {
         return `${target} is now open and focused.`

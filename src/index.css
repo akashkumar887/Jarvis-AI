@@ -3298,6 +3298,17 @@ kbd {
   border-radius: 20px;
   padding: 5px 12px;
   backdrop-filter: blur(8px);
+  color: #c8efff;
+  font: inherit;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+button.clean-voice-pill:hover {
+  background: rgba(0, 240, 255, 0.18);
+  border-color: rgba(0, 240, 255, 0.6);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.25);
+  transform: translateY(-1px);
 }
 
 .voice-dot {

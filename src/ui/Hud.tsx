@@ -7,6 +7,7 @@ import { Pointer } from './Pointer'
 import { GestureGuide } from './GestureGuide'
 import { ReactorHud } from './ReactorHud'
 import { CommandBar } from './CommandBar'
+import { cycleVoice, createSpeaker } from '../lib/tts'
 
 const statusText: Record<Phase, string> = {
   offline: 'OFFLINE',
@@ -150,6 +151,15 @@ export function Hud({ onTransmitText, onToggleMic }: HudProps = {}) {
     setShowConfig(false)
   }
 
+  const handleCycleVoice = () => {
+    const nextName = cycleVoice()
+    useStore.getState().setVoice(nextName)
+    const clean = nextName.replace(/\(.*?\)/g, '').trim()
+    const spk = createSpeaker()
+    spk.say(`Vocal matrix switched to ${clean}, sir.`)
+    void spk.end()
+  }
+
   return (
     <div className="hud clean-hud" style={{ ['--accent' as string]: colour }}>
       <BladeSweep />
@@ -184,10 +194,15 @@ export function Hud({ onTransmitText, onToggleMic }: HudProps = {}) {
             <span className="voice-label">GEMINI 3.8 FLASH</span>
           </button>
 
-          <div className="clean-voice-pill" title={`Active Voice: ${voice || 'Daniel'}`}>
+          <button
+            type="button"
+            className="clean-voice-pill voice-select-pill"
+            onClick={handleCycleVoice}
+            title={`Active Voice: ${voice || 'Natural British'}. Click to cycle voices (or press V)`}
+          >
             <span className="voice-dot" />
-            <span className="voice-label">{voice ? voice.replace(/\(.*?\)/g, '').trim().toUpperCase() : 'VOICE ACTIVE'}</span>
-          </div>
+            <span className="voice-label">VOICE: {voice ? voice.replace(/\(.*?\)/g, '').trim().toUpperCase() : 'ACTIVE'}</span>
+          </button>
 
           <div className={`clean-status-pill phase-${phase}`}>
             <span className="dot" />
