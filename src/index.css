@@ -1,11 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;600;700&family=JetBrains+Mono:wght@300;400;600&family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&display=swap');
 
 :root {
-  /* The interface cyan. `--accent` is re-declared per phase and per panel;
-     this one stays put and is what anything neutral pins itself to. */
-  --interface: #00e5ff;
+  /* Tony Stark's J.A.R.V.I.S. Golden Hologram Interface (#f5a623) */
+  --interface: #f5a623;
   --accent: var(--interface);
-  --bg: #01060c;
+  --bg: #02070e;
   font-family: 'Chakra Petch', system-ui, sans-serif;
   color-scheme: dark;
 }
@@ -31,11 +30,11 @@ body::after {
   pointer-events: none;
   z-index: 5;
   background:
-    radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.55) 100%),
+    radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.65) 100%),
     repeating-linear-gradient(
       0deg,
-      rgba(0, 229, 255, 0.028) 0px,
-      rgba(0, 229, 255, 0.028) 1px,
+      rgba(245, 166, 35, 0.03) 0px,
+      rgba(245, 166, 35, 0.03) 1px,
       transparent 1px,
       transparent 3px
     );

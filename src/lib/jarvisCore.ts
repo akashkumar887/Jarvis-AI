@@ -170,46 +170,93 @@ export async function askJarvisCore(
     }
   }
 
-  // 2. YOUTUBE ON CHROME & SEARCH
-  if (/(?:open|search|play|watch|launch)?\s*youtube(?:\s+on\s+chrome)?/i.test(p) || /youtube\.com/i.test(p)) {
+  // 2. YOUTUBE VIDEO PLAYBACK & SEARCH
+  if (
+    /(?:open|search|play|watch|stream|listen to)?\s*(?:video\s+)?(?:on\s+)?youtube/i.test(p) ||
+    /youtube(?:\.com)?/i.test(p) ||
+    /^(?:play|watch|stream)\s+(.+)\s+(?:on\s+youtube|video)/i.test(p)
+  ) {
     triggerTool('system_open_url')
     let query = ''
-    const match = p.match(/(?:search|play|watch|find)\s+(.+?)\s+on\s+youtube/i) ||
-                  p.match(/youtube\s+(?:for|search|play)\s+(.+)/i) ||
-                  p.match(/open\s+youtube\s+and\s+(?:play|search)\s+(.+)/i)
-    if (match) {
-      query = match[1].trim()
+    const match =
+      p.match(/(?:search|play|watch|stream|find)\s+(.+?)\s+on\s+youtube/i) ||
+      p.match(/youtube\s+(?:for|search|play|watch)\s+(.+)/i) ||
+      p.match(/open\s+youtube\s+and\s+(?:play|search|watch)\s+(.+)/i) ||
+      p.match(/^(?:play|watch|stream)\s+(?:video\s+)?(.+)/i)
+
+    if (match && !/^(?:youtube|video)$/i.test(match[1].trim())) {
+      query = match[1].replace(/on\s+youtube/i, '').trim()
     }
+
     const url = query
       ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
       : 'https://www.youtube.com'
+
     try {
       window.open(url, '_blank')
     } catch {}
 
-    store.setActiveTask(`youtube: ${query || 'home'}`)
-    store.setStatusSubtext(query ? `YouTube Search: ${query}` : 'YouTube Open')
+    store.setActiveTask(`youtube: ${query ? query.slice(0, 24) : 'stream-active'}`)
+    store.setStatusSubtext(query ? `YouTube: ${query}` : 'YouTube Stream Open')
+    store.fireEffect('pulse')
+
+    // Holographic YouTube Player Blade on the HUD
+    store.pushBlade({
+      id: 'youtube-stream-blade',
+      title: 'YOUTUBE · HOLOGRAPHIC STREAM',
+      kind: 'markup',
+      html: `
+        <div class="hud-rows" style="padding: 16px;">
+          <div class="hud-metric">YOUTUBE <span class="hud-unit">STREAMING ENGINE</span></div>
+          <div class="hud-bar" style="--v:1.0"></div>
+          <div class="hud-row">
+            <div class="hud-idx">[STREAM]</div>
+            <div class="hud-main">
+              <div class="hud-label">${query || 'YouTube Home Feed'}</div>
+              <div class="hud-sub">Browser: Google Chrome · High Bitrate Audio</div>
+            </div>
+            <div class="hud-tag hud-hot">LIVE</div>
+          </div>
+          <div style="margin-top: 14px; padding: 14px; background: rgba(245, 166, 35, 0.08); border-left: 3px solid var(--accent); border-radius: 4px;">
+            <div style="font-size: 11px; color: #fff; margin-bottom: 6px;">🎬 Stream initiated on Google Chrome, sir.</div>
+            <div style="font-size: 10px; opacity: 0.6; word-break: break-all;">${url}</div>
+          </div>
+        </div>
+      `,
+      size: 'tall',
+      hold: 'turn',
+    })
 
     const reply = query
-      ? `Searching for "${query}" on YouTube in Google Chrome, sir.`
+      ? `Playing "${query}" on YouTube in Google Chrome for you now, sir. Visual feed projected onto your HUD.`
       : 'Opening YouTube on Google Chrome for you now, sir.'
     await streamTokens(reply, handlers.onText)
     return { text: reply, tools: usedTools }
   }
 
-  // 3. WHATSAPP AUTOMATION
-  if (/whatsapp/i.test(p)) {
+  // 3. WHATSAPP AUTOMATION (Text & Messages to Anyone)
+  if (/whatsapp/i.test(p) || /(?:send|text|message)\s+(?:a\s+)?(?:whatsapp|message\s+on\s+whatsapp)/i.test(p)) {
     triggerTool('system_whatsapp')
-    const msgMatch = prompt.match(/(?:send|text|message|write)\s+(?:a\s+)?(?:message\s+)?(?:to\s+([0-9+a-zA-Z\s]+?)\s+)?(?:saying|that|with text|message)?\s*[:"-]?\s*(.+)/i)
+    const msgMatch =
+      prompt.match(/(?:send|text|message|tell|write)\s+(?:a\s+)?(?:message\s+)?(?:to\s+([0-9+a-zA-Z\s]+?)\s+)?(?:saying|that|with text|message)?\s*[:"-]?\s*(.+)/i) ||
+      prompt.match(/whatsapp\s+([0-9+a-zA-Z\s]+?)\s*[:"-]?\s*(.+)/i)
+
+    let recipient = 'Contact'
     let phone = ''
     let message = ''
+
     if (msgMatch) {
-      const recipient = msgMatch[1] ? msgMatch[1].trim() : ''
+      const rawTo = msgMatch[1] ? msgMatch[1].trim() : ''
       message = (msgMatch[2] || '').replace(/^["']|["']$/g, '').trim()
-      if (/[0-9+]/.test(recipient)) {
-        phone = recipient.replace(/[^0-9]/g, '')
+      if (rawTo && rawTo.toLowerCase() !== 'someone' && rawTo.toLowerCase() !== 'anyone') {
+        recipient = rawTo
+        if (/[0-9+]/.test(rawTo)) {
+          phone = rawTo.replace(/[^0-9]/g, '')
+        }
       }
-    } else {
+    }
+
+    if (!message) {
       message = 'Hello from J.A.R.V.I.S.'
     }
 
@@ -221,12 +268,40 @@ export async function askJarvisCore(
       window.open(waUrl, '_blank')
     } catch {}
 
-    store.setActiveTask('whatsapp: message-dispatch')
-    store.setStatusSubtext('WhatsApp Prepared')
+    store.setActiveTask(`whatsapp: to-${recipient.toLowerCase().replace(/\s+/g, '-')}`)
+    store.setStatusSubtext(`WhatsApp: ${recipient}`)
+    store.fireEffect('pulse')
+
+    // Holographic WhatsApp Blade on HUD
+    store.pushBlade({
+      id: 'whatsapp-transmission-blade',
+      title: 'WHATSAPP · TRANSMISSION',
+      kind: 'markup',
+      html: `
+        <div class="hud-rows" style="padding: 16px;">
+          <div class="hud-metric">WHATSAPP <span class="hud-unit">SECURE UPLINK</span></div>
+          <div class="hud-bar" style="--v:1.0"></div>
+          <div class="hud-row">
+            <div class="hud-idx">[MSG]</div>
+            <div class="hud-main">
+              <div class="hud-label">Recipient: ${recipient}</div>
+              <div class="hud-sub">Encryption: End-to-End · Protocol: WhatsApp Desktop / Web</div>
+            </div>
+            <div class="hud-tag hud-hot">TRANSMITTED</div>
+          </div>
+          <div style="margin-top: 14px; padding: 14px; background: rgba(37,211,102,0.1); border: 1px solid rgba(37,211,102,0.3); border-radius: 4px;">
+            <div style="font-size: 10px; opacity: 0.7; letter-spacing: 0.1em; color: #6aff8d; margin-bottom: 4px;">DISPATCH PAYLOAD:</div>
+            <div style="font-size: 13px; color: #ffffff; line-height: 1.4;">"${message}"</div>
+          </div>
+        </div>
+      `,
+      size: 'compact',
+      hold: 'turn',
+    })
 
     const reply = phone
-      ? `Opening WhatsApp message for +${phone}: "${message}", sir.`
-      : `WhatsApp launched with your message, sir.`
+      ? `WhatsApp message for +${phone} prepared: "${message}", sir. Dispatched to desktop uplink.`
+      : `WhatsApp message for ${recipient} prepared: "${message}", sir. Transmitting now.`
     await streamTokens(reply, handlers.onText)
     return { text: reply, tools: usedTools }
   }
@@ -249,6 +324,34 @@ export async function askJarvisCore(
 
     store.setActiveTask(`email: to-${to.split('@')[0]}`)
     store.setStatusSubtext(`Email: ${subject}`)
+    store.fireEffect('pulse')
+
+    // Holographic Apple Mail Blade on HUD
+    store.pushBlade({
+      id: 'email-transmission-blade',
+      title: 'EMAIL · TRANSMISSION',
+      kind: 'markup',
+      html: `
+        <div class="hud-rows" style="padding: 16px;">
+          <div class="hud-metric">APPLE MAIL <span class="hud-unit">TRANSMISSION</span></div>
+          <div class="hud-bar" style="--v:1.0"></div>
+          <div class="hud-row">
+            <div class="hud-idx">[MAIL]</div>
+            <div class="hud-main">
+              <div class="hud-label">To: ${to}</div>
+              <div class="hud-sub">Subject: ${subject}</div>
+            </div>
+            <div class="hud-tag hud-hot">DRAFTED</div>
+          </div>
+          <div style="margin-top: 14px; padding: 14px; background: rgba(245,166,35,0.08); border-left: 3px solid var(--accent); border-radius: 4px;">
+            <div style="font-size: 10px; opacity: 0.7; letter-spacing: 0.1em; margin-bottom: 4px;">MESSAGE CONTENT:</div>
+            <div style="font-size: 12px; color: #ffffff; line-height: 1.5;">${body}</div>
+          </div>
+        </div>
+      `,
+      size: 'tall',
+      hold: 'turn',
+    })
 
     const reply = `Email prepared for ${to} with subject "${subject}". Apple Mail composer initiated, sir.`
     await streamTokens(reply, handlers.onText)

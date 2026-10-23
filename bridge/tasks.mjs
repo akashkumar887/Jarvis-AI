@@ -1257,11 +1257,44 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
         target = `https://${target}`
       }
       const browser = args.browser || 'chrome'
+      const isYoutube = target.includes('youtube.com')
       let cmd = `open -a "Google Chrome" "${target}"`
       if (browser === 'safari') cmd = `open -a "Safari" "${target}"`
       else if (browser === 'default') cmd = `open "${target}"`
 
       const res = await runShell(cmd)
+
+      if (emitBlade) {
+        const title = isYoutube ? 'YOUTUBE · STREAMING ENGINE' : 'BROWSER · SECURE NAVIGATION'
+        const label = isYoutube ? (args.query || 'YouTube Stream') : target
+        const html = `
+<div class="hud-rows" style="padding: 16px;">
+  <div class="hud-metric">${isYoutube ? 'YOUTUBE' : 'UPLINK'} <span class="hud-unit">ACTIVE STREAM</span></div>
+  <div class="hud-bar" style="--v:1.0"></div>
+  <div class="hud-row">
+    <div class="hud-idx">[STREAM]</div>
+    <div class="hud-main">
+      <div class="hud-label">${escapeHtml(label)}</div>
+      <div class="hud-sub">Browser: ${browser === 'chrome' ? 'Google Chrome' : browser} · GPU Accelerated</div>
+    </div>
+    <div class="hud-tag hud-hot">LIVE</div>
+  </div>
+  <div style="margin-top: 14px; padding: 12px; background: rgba(245, 166, 35, 0.08); border-left: 3px solid var(--accent); border-radius: 4px;">
+    <div style="font-size: 11px; color: #fff; margin-bottom: 6px;">🎬 Media stream initiated on your display, sir.</div>
+    <div style="font-size: 10px; opacity: 0.6; word-break: break-all;">${escapeHtml(target)}</div>
+  </div>
+</div>`.trim()
+
+        emitBlade({
+          id: 'youtube-stream-blade',
+          title,
+          kind: 'markup',
+          html,
+          size: 'tall',
+          hold: 'turn',
+        })
+      }
+
       if (res.ok) {
         return `Opened ${target} in ${browser === 'chrome' ? 'Google Chrome' : browser}.`
       }
@@ -1270,10 +1303,42 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
     }
 
     case 'system_whatsapp': {
-      const text = encodeURIComponent(String(args.message || ''))
+      const message = String(args.message || '')
+      const text = encodeURIComponent(message)
       const phone = args.phone ? String(args.phone).replace(/[^0-9]/g, '') : ''
+      const recipient = args.recipient || (phone ? `+${phone}` : 'Specified Contact')
       const url = phone ? `whatsapp://send?phone=${phone}&text=${text}` : `whatsapp://send?text=${text}`
       const res = await runShell(`open "${url}"`)
+
+      if (emitBlade) {
+        const html = `
+<div class="hud-rows" style="padding: 16px;">
+  <div class="hud-metric">WHATSAPP <span class="hud-unit">SECURE UPLINK</span></div>
+  <div class="hud-bar" style="--v:1.0"></div>
+  <div class="hud-row">
+    <div class="hud-idx">[MSG]</div>
+    <div class="hud-main">
+      <div class="hud-label">Recipient: ${escapeHtml(recipient)}</div>
+      <div class="hud-sub">Encryption: End-to-End · Protocol: WhatsApp Desktop</div>
+    </div>
+    <div class="hud-tag hud-hot">TRANSMITTED</div>
+  </div>
+  <div style="margin-top: 14px; padding: 14px; background: rgba(37,211,102,0.1); border: 1px solid rgba(37,211,102,0.3); border-radius: 4px;">
+    <div style="font-size: 10px; opacity: 0.7; letter-spacing: 0.1em; color: #6aff8d; margin-bottom: 4px;">DISPATCH PAYLOAD:</div>
+    <div style="font-size: 13px; color: #ffffff; line-height: 1.4;">"${escapeHtml(message)}"</div>
+  </div>
+</div>`.trim()
+
+        emitBlade({
+          id: 'whatsapp-transmission-blade',
+          title: 'WHATSAPP · TRANSMISSION',
+          kind: 'markup',
+          html,
+          size: 'compact',
+          hold: 'turn',
+        })
+      }
+
       if (res.ok) {
         return `WhatsApp launched with your message pre-filled${phone ? ` for +${phone}` : ''}, sir.`
       }
@@ -1298,6 +1363,36 @@ export async function executeTaskTool(name, args = {}, emitBlade, _emitPanel) {
       end tell`
 
       const res = await runAppleScript(script)
+
+      if (emitBlade) {
+        const html = `
+<div class="hud-rows" style="padding: 16px;">
+  <div class="hud-metric">APPLE MAIL <span class="hud-unit">TRANSMISSION</span></div>
+  <div class="hud-bar" style="--v:1.0"></div>
+  <div class="hud-row">
+    <div class="hud-idx">[MAIL]</div>
+    <div class="hud-main">
+      <div class="hud-label">To: ${escapeHtml(to)}</div>
+      <div class="hud-sub">Subject: ${escapeHtml(subject)}</div>
+    </div>
+    <div class="hud-tag hud-hot">${sendNow ? 'SENT' : 'DRAFTED'}</div>
+  </div>
+  <div style="margin-top: 14px; padding: 14px; background: rgba(245,166,35,0.08); border-left: 3px solid var(--accent); border-radius: 4px;">
+    <div style="font-size: 10px; opacity: 0.7; letter-spacing: 0.1em; margin-bottom: 4px;">MESSAGE CONTENT:</div>
+    <div style="font-size: 12px; color: #ffffff; line-height: 1.5;">${escapeHtml(body)}</div>
+  </div>
+</div>`.trim()
+
+        emitBlade({
+          id: 'email-transmission-blade',
+          title: 'EMAIL · TRANSMISSION',
+          kind: 'markup',
+          html,
+          size: 'tall',
+          hold: 'turn',
+        })
+      }
+
       if (res.ok) {
         return sendNow
           ? `Email to ${to} with subject "${subject}" has been transmitted, sir.`

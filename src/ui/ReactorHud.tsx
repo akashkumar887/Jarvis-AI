@@ -61,10 +61,10 @@ export function ReactorHud({ phase }: ReactorHudProps) {
             </feMerge>
           </filter>
           <radialGradient id="arcCoreGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
-            <stop offset="40%" stopColor="#00f0ff" stopOpacity="0.6" />
-            <stop offset="80%" stopColor="#0077ff" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#00f0ff" stopOpacity="0" />
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
+            <stop offset="40%" stopColor="#ffc043" stopOpacity="0.65" />
+            <stop offset="80%" stopColor="#ff8800" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#f5a623" stopOpacity="0" />
           </radialGradient>
         </defs>
 

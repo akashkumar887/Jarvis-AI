@@ -10,6 +10,7 @@ import {
 import { BlendFunction } from 'postprocessing'
 import * as THREE from 'three'
 import { Core } from './Core'
+import { HoloSphere } from './HoloSphere'
 import { Particles } from './Particles'
 import { Orbits } from './Orbits'
 import { useStore, phaseColor, accentFor, type Phase } from '../store'
@@ -186,6 +187,7 @@ function Rig() {
   return (
     <>
       <Core drive={drive} />
+      <HoloSphere drive={drive} />
       <Particles drive={drive} />
       <Orbits />
     </>

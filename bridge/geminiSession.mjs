@@ -103,36 +103,52 @@ export async function runAutonomousTurn(
     }
   }
 
-  // 1. YOUTUBE ON CHROME & VIDEO / WEB SEARCH
-  if (/(?:open|search|play|watch|launch)?\s*youtube(?:\s+on\s+chrome)?/i.test(p) || /youtube\.com/i.test(p)) {
+  // 1. YOUTUBE VIDEO PLAYBACK & SEARCH
+  if (
+    /(?:open|search|play|watch|stream|listen to)?\s*(?:video\s+)?(?:on\s+)?youtube/i.test(p) ||
+    /youtube(?:\.com)?/i.test(p) ||
+    /^(?:play|watch|stream)\s+(.+)\s+(?:on\s+youtube|video)/i.test(p)
+  ) {
     let query = ''
-    const match = p.match(/(?:search|play|watch|find)\s+(.+?)\s+on\s+youtube/i) ||
-                  p.match(/youtube\s+(?:for|search|play)\s+(.+)/i) ||
-                  p.match(/open\s+youtube\s+and\s+(?:play|search)\s+(.+)/i)
-    if (match) {
-      query = match[1].trim()
+    const match =
+      p.match(/(?:search|play|watch|stream|find)\s+(.+?)\s+on\s+youtube/i) ||
+      p.match(/youtube\s+(?:for|search|play|watch)\s+(.+)/i) ||
+      p.match(/open\s+youtube\s+and\s+(?:play|search|watch)\s+(.+)/i) ||
+      p.match(/^(?:play|watch|stream)\s+(?:video\s+)?(.+)/i)
+
+    if (match && !/^(?:youtube|video)$/i.test(match[1].trim())) {
+      query = match[1].replace(/on\s+youtube/i, '').trim()
     }
+
     const url = query
       ? `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
       : 'https://www.youtube.com'
     const reply = query
-      ? `Searching for "${query}" on YouTube in Google Chrome, sir.`
+      ? `Playing "${query}" on YouTube in Google Chrome for you now, sir.`
       : 'Opening YouTube on Google Chrome for you now, sir.'
-    await executeDirect('system_open_url', { url, browser: 'chrome' }, reply)
+    await executeDirect('system_open_url', { url, browser: 'chrome', query }, reply)
     return
   }
 
   // 2. WHATSAPP AUTOMATION
-  if (/whatsapp/i.test(p)) {
+  if (/whatsapp/i.test(p) || /(?:send|text|message)\s+(?:a\s+)?(?:whatsapp|message\s+on\s+whatsapp)/i.test(p)) {
     // Check if user wants to send a message
-    const msgMatch = text.match(/(?:send|text|message|write)\s+(?:a\s+)?(?:message\s+)?(?:to\s+([0-9+a-zA-Z\s]+?)\s+)?(?:saying|that|with text|message)?\s*[:"-]?\s*(.+)/i)
+    const msgMatch =
+      text.match(/(?:send|text|message|tell|write)\s+(?:a\s+)?(?:message\s+)?(?:to\s+([0-9+a-zA-Z\s]+?)\s+)?(?:saying|that|with text|message)?\s*[:"-]?\s*(.+)/i) ||
+      text.match(/whatsapp\s+([0-9+a-zA-Z\s]+?)\s*[:"-]?\s*(.+)/i)
+
+    let recipient = 'Contact'
     let phone = ''
     let message = ''
+
     if (msgMatch) {
-      const recipient = msgMatch[1] ? msgMatch[1].trim() : ''
+      const rawTo = msgMatch[1] ? msgMatch[1].trim() : ''
       message = (msgMatch[2] || '').replace(/^["']|["']$/g, '').trim()
-      if (/[0-9+]/.test(recipient)) {
-        phone = recipient.replace(/[^0-9]/g, '')
+      if (rawTo && rawTo.toLowerCase() !== 'someone' && rawTo.toLowerCase() !== 'anyone') {
+        recipient = rawTo
+        if (/[0-9+]/.test(rawTo)) {
+          phone = rawTo.replace(/[^0-9]/g, '')
+        }
       }
     } else {
       message = 'Hello from J.A.R.V.I.S.'
@@ -145,10 +161,10 @@ export async function runAutonomousTurn(
 
     await executeDirect(
       'system_whatsapp',
-      { message: message || 'Hello', phone },
+      { message: message || 'Hello', phone, recipient },
       phone
         ? `Preparing WhatsApp message for +${phone}: "${message}", sir.`
-        : `Opening WhatsApp with message "${message}", sir.`
+        : `Opening WhatsApp message for ${recipient}: "${message}", sir.`
     )
     return
   }
