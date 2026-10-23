@@ -545,7 +545,7 @@ export function accentFor(phase: Phase, ui: UiState): string {
 //   __jarvis.addOrbit({ id: 'moon', src: '/vite.svg', radius: 0.6, speed: 8,
 //                       size: 90, tilt: 25, opacity: 1, phase: 0 })
 //   __jarvis.fireEffect('glitch'); __jarvis.resetUi()
-if (import.meta.env.DEV) {
+if (typeof import.meta !== 'undefined' && import.meta.env?.DEV && typeof window !== 'undefined') {
   // Not `useStore.getState()` directly: zustand replaces the state object on
   // every set, so a captured snapshot's *actions* keep working while every
   // data field reads forever as it was at module load. `__jarvis.phase` said
