@@ -101,7 +101,8 @@ if (typeof window !== 'undefined') {
  * through the same dead path. After the first real failure everything routes to
  * the bridge's speech proxy instead, which holds an ElevenLabs key already.
  */
-let nativeBroken = false
+// Set to prevent Chrome from garbage-collecting utterances mid-speech
+const activeUtterances = new Set<SpeechSynthesisUtterance>()
 
 let speakingAt = 0
 
@@ -373,18 +374,8 @@ export function createSpeaker(): Speaker {
 
   /** null means "no audio pipeline, use the system voice directly". */
   function synthesise(text: string): Promise<string | null> | null {
-    // Prefer the ElevenLabs voice whenever the bridge reports it is available —
-    // for a demo the timbre is worth the round trip, and this is what makes the
-    // premium path automatic with no flag to set. It falls back to the browser
-    // voice on any failure, so a student without a key still hears him speak.
-    // `nativeBroken` latches on once the system voice has proved unusable.
-    if (USE_ELEVENLABS || caps().tts || nativeBroken) {
-      // Recorded at the moment the tier is chosen rather than only when the
-      // native voice latches over. Without this the panel reported 'system'
-      // for a session that had spoken every one of its sentences through
-      // ElevenLabs, which makes the one field naming the engine useless
-      // exactly when you are trying to work out which engine is at fault.
-      diag.engine = 'elevenlabs'
+    if (caps().tts || USE_ELEVENLABS || Boolean(env.elevenKey)) {
+      diag.engine = caps().tts ? 'elevenlabs' : 'system'
       return fetchCloudAudio(text).catch(() => null)
     }
     if (TTS_ENGINE === 'kokoro' && !kokoro.isUnavailable()) {
@@ -410,9 +401,6 @@ export function createSpeaker(): Speaker {
         if (!item) break
 
         prime(item)
-        // Exactly one sentence ahead. Priming the whole queue fires every
-        // request at once — four parallel cloud POSTs, or four concurrent
-        // generations against a single ONNX session.
         prime(queue[0])
 
         await speakOne(item)
@@ -429,26 +417,17 @@ export function createSpeaker(): Speaker {
     try {
       const url = item.audio ? await item.audio : null
       if (cancelled) return
-      // A failed generation is not a failed turn — drop to the system voice.
+      // High fidelity bridge/cloud audio playback
       if (url) {
         await playUrl(url, item.text)
         return
       }
 
+      // Browser Web Speech API fallback
       const spoke = await speakNative(item.text)
       if (spoke || cancelled) return
 
-      // The OS voice produced no sound. That is not recoverable by retrying it,
-      // so latch it off and rescue this sentence through the bridge's speech
-      // proxy — which already holds an ElevenLabs key borrowed from the MCP
-      // config. Losing the better timbre is a far smaller failure than a
-      // assistant that answers in silence.
-      if (!nativeBroken) {
-        nativeBroken = true
-        diag.nativeBroken = true
-        diag.engine = 'elevenlabs'
-        console.warn('[jarvis] system voice is not producing sound — using the bridge speech proxy from here on')
-      }
+      // Secondary attempt via bridge
       const rescue = await fetchCloudAudio(item.text).catch(() => null)
       if (rescue && !cancelled) {
         diag.rescued++
@@ -461,34 +440,18 @@ export function createSpeaker(): Speaker {
 
   const speakNative = (text: string) =>
     new Promise<boolean>((resolve) => {
-      // Chrome's speechSynthesis wedges after cancel().
-      //
-      // This is the single most likely reason a whole session goes silent. The
-      // engine is a global singleton, `cancel()` can leave its queue in a state
-      // where every subsequent speak() is accepted and then never spoken — no
-      // error, no events, just silence for the rest of the page's life. Barge-in
-      // calls cancel() constantly now that the microphone stays open, so what
-      // used to be a rare quirk became the common case.
-      //
-      // resume() is the documented un-wedge. It is a no-op when nothing is
-      // paused, so it is safe to fire before every utterance.
-      speechSynthesis.resume()
+      try {
+        speechSynthesis.resume()
+      } catch {}
 
       const u = new SpeechSynthesisUtterance(text)
+      activeUtterances.add(u)
       const voice = pickVoice()
       if (voice) u.voice = voice
       u.lang = voice?.lang ?? 'en-GB'
-      // Deliberate, and deliberately invariant — the character's pace does not
-      // change with stakes, and that steadiness is most of the effect. This
-      // lands around 130 wpm, below the median for film dialogue.
-      u.rate = 0.92
-      // Mid-baritone, and *not* pushed lower for gravitas. The voice is
-      // clarity-weighted rather than chest-weighted; dropping it further reads
-      // as a film-trailer voiceover, which is the wrong character entirely.
+      u.rate = 0.95
       u.pitch = 0.95
 
-      // speechSynthesis exposes no amplitude, so drive the reactor from a
-      // synthetic envelope. It only has to look like speech, not match it.
       let raf = 0
       let t = 0
       const tick = () => {
@@ -510,13 +473,11 @@ export function createSpeaker(): Speaker {
         if (done) return
         done = true
         nativeInFlight = false
+        activeUtterances.delete(u)
         if (watchdog) clearTimeout(watchdog)
         if (keepalive) clearInterval(keepalive)
         cancelAnimationFrame(raf)
-        // Held rather than zeroed, so the orb doesn't collapse in the gap
-        // between two sentences of the same answer.
         outLevel = 0.12
-        // The whole point of the boolean: `true` only if sound actually began.
         resolve(started)
       }
 
@@ -525,25 +486,18 @@ export function createSpeaker(): Speaker {
         diag.started++
         diag.lastError = ''
         if (watchdog) clearTimeout(watchdog)
-        // Chrome stops speaking after roughly fifteen seconds unless the engine
-        // is nudged. A pause/resume pair is the standard keepalive and is
-        // inaudible; without it long answers cut off mid-sentence.
         keepalive = setInterval(() => {
           if (done) return
-          speechSynthesis.pause()
-          speechSynthesis.resume()
+          try {
+            speechSynthesis.pause()
+            speechSynthesis.resume()
+          } catch {}
         }, 5000)
       }
       u.onend = finish
-      // Swallowing this was a mistake. When the OS voice fails there is no
-      // other signal at all — no exception, no silence you can detect from
-      // code — so an unlogged onerror turns a broken voice into an unexplained
-      // quiet app, which is exactly the bug that took three attempts to find.
       u.onerror = (e) => {
         const code = String((e as SpeechSynthesisErrorEvent).error ?? 'unknown')
         diag.lastError = code
-        // 'interrupted' and 'canceled' are us, cancelling deliberately on a
-        // barge-in. Everything else means the engine could not speak.
         if (code !== 'interrupted' && code !== 'canceled') {
           diag.failures++
           console.error(`[jarvis] speech failed (${code}) on voice "${u.voice?.name ?? 'default'}"`)
@@ -551,16 +505,11 @@ export function createSpeaker(): Speaker {
         finish()
       }
 
-      // If `start` never arrives the engine has swallowed the utterance, and
-      // nothing else will ever tell us — no error fires. Un-wedge and try once
-      // more; if that also goes nowhere, resolve rather than hang, because a
-      // silent sentence is recoverable and a stuck queue is not.
       watchdog = setTimeout(() => {
         if (done || started) return
-        console.warn('[jarvis] speech did not start — un-wedging the engine')
-        speechSynthesis.cancel()
-        speechSynthesis.resume()
         try {
+          speechSynthesis.cancel()
+          speechSynthesis.resume()
           speechSynthesis.speak(u)
         } catch {
           finish()
@@ -568,17 +517,20 @@ export function createSpeaker(): Speaker {
         }
         watchdog = setTimeout(() => {
           if (done || started) return
-          console.error('[jarvis] speech engine is not responding — switching to the cloud voice')
           diag.failures++
-          diag.lastError = diag.lastError || 'no-start'
           finish()
         }, 1500)
-      }, 700)
+      }, 2000)
+
       diag.spoken++
       diag.lastText = text.slice(0, 60)
       diag.voice = u.voice?.name ?? 'default'
       nativeInFlight = true
-      speechSynthesis.speak(u)
+      try {
+        speechSynthesis.speak(u)
+      } catch {
+        finish()
+      }
     })
 
   const playUrl = (url: string, text: string) =>

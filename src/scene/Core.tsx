@@ -170,6 +170,11 @@ const fragment = /* glsl */ `
     // A slow pulse rippling out through the core, the reactor's heartbeat.
     float pulse = band(r, fract(uPhase * 0.08) * 0.40, 0.020) * core * 0.45;
 
+    // Luminous electric S-curve plasma vortex in the center of the reactor (matching reference photo)
+    float sCurve = exp(-pow((p.y - 0.22 * sin(p.x * 3.8 + uPhase * 1.2)) / 0.048, 2.0)) * smoothstep(0.38, 0.08, r);
+    float sGlow = exp(-pow((p.y - 0.22 * sin(p.x * 3.8 + uPhase * 1.2)) / 0.11, 2.0)) * smoothstep(0.38, 0.08, r) * 0.45;
+    float vortex = (sCurve * 0.95 + sGlow) * (0.85 + uLevel * 0.7);
+
     // -- inner glow ---------------------------------------------------------
     float bloom = exp(-r * 3.4) * (0.16 + uLevel * 0.34);
 
@@ -184,12 +189,13 @@ const fragment = /* glsl */ `
             + radar
             + lines * kLines
             + coreTex + pulse
+            + vortex
             + bloom * kGlow
             + bodyFill;
 
     // The moving highlights run hot; the body of the ring keeps its hue.
     vec3 col = mix(uColor, uHot,
-      clamp(edge * 1.3 + radar * 0.7 + pulse * 0.5 + dust * 0.4, 0.0, 1.0));
+      clamp(edge * 1.3 + radar * 0.7 + pulse * 0.5 + dust * 0.4 + vortex * 0.75, 0.0, 1.0));
 
     // Radial reveal on power-up: the ring assembles from the centre outward.
     v *= smoothstep(0.0, 0.35, uOpen - r * 0.45);

@@ -492,3 +492,91 @@ export function uiServer(emit) {
     ],
   })
 }
+
+export const UI_TOOLS_DEFINITIONS = [
+  {
+    name: 'ui_theme',
+    description: 'Change interface accent color, background, or theme palette. Colors can be hex, or common names like red, gold, crimson, emerald, cyan.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        accent: { type: 'STRING', description: 'Accent color hex (e.g. #ff2244, #ffcc00, #00e5ff) or name.' },
+        background: { type: 'STRING', description: 'Page background color hex or null to reset.' },
+      },
+    },
+  },
+  {
+    name: 'ui_reactor',
+    description: 'Control the Arc Reactor: color, scale (0.2-3), intensity (0-3), spin speed (0-5), style (ring/sphere/wire), and visibility.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        color: { type: 'STRING', description: 'Reactor color hex or null to follow accent.' },
+        scale: { type: 'NUMBER', description: 'Size multiplier (0.2 to 3.0).' },
+        intensity: { type: 'NUMBER', description: 'Glow multiplier (0 to 3.0).' },
+        spin: { type: 'NUMBER', description: 'Spin multiplier (0 to 5.0).' },
+      },
+    },
+  },
+  {
+    name: 'ui_effect',
+    description: 'Trigger a visual HUD holographic flourish across the whole interface: glitch, pulse, scan, shake, or flash.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        kind: { type: 'STRING', enum: ['glitch', 'pulse', 'scan', 'shake', 'flash'], description: 'Effect type.' },
+      },
+      required: ['kind'],
+    },
+  },
+  {
+    name: 'ui_reset',
+    description: 'Reset interface colors, reactor parameters, orbits and screen to stock defaults.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {},
+    },
+  },
+]
+
+export async function executeUiTool(name, args = {}, emit) {
+  if (!emit) return 'UI handler not connected'
+  switch (name) {
+    case 'ui_theme': {
+      let accent = toColour(args.accent)
+      if (accent && !accent.startsWith('#') && !accent.startsWith('rgb')) {
+        const lower = accent.toLowerCase()
+        if (lower.includes('red') || lower.includes('crimson')) accent = '#ff2244'
+        else if (lower.includes('gold') || lower.includes('yellow')) accent = '#ffcc00'
+        else if (lower.includes('green') || lower.includes('emerald')) accent = '#00ff88'
+        else if (lower.includes('purple') || lower.includes('violet')) accent = '#b044ff'
+        else if (lower.includes('cyan') || lower.includes('blue')) accent = '#00e5ff'
+      }
+      const patch = {}
+      if (accent) put(patch, 'accent', accent)
+      if (args.background) put(patch, 'background', toColour(args.background))
+      if (has(patch)) emit('patch', patch)
+      return 'Interface theme reconfigured.'
+    }
+    case 'ui_reactor': {
+      const reactor = {}
+      put(reactor, 'color', toColour(args.color))
+      put(reactor, 'scale', clamp(args.scale, 0.2, 3))
+      put(reactor, 'intensity', clamp(args.intensity, 0, 3))
+      put(reactor, 'spin', clamp(args.spin, 0, 5))
+      if (args.style) put(reactor, 'style', args.style)
+      if (has(reactor)) emit('patch', { reactor })
+      return 'Reactor parameters adjusted.'
+    }
+    case 'ui_effect': {
+      emit('effect', { kind: args.kind ?? 'pulse' })
+      return `Visual effect ${args.kind || 'pulse'} fired on HUD.`
+    }
+    case 'ui_reset': {
+      emit('reset', {})
+      return 'Interface reset to default state.'
+    }
+    default:
+      return `Unknown UI command: ${name}`
+  }
+}

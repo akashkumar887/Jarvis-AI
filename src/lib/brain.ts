@@ -1,7 +1,7 @@
 import { BACKEND } from '../config'
-import * as direct from './anthropic'
+import * as direct from './gemini'
 import * as bridge from './bridge'
-import type { AskHandlers, Msg } from './anthropic'
+import type { AskHandlers, Msg } from './gemini'
 import type { Blade, Panel } from '../store'
 
 export type { AskHandlers, Msg }
@@ -11,14 +11,13 @@ export type { ConnectionState } from './bridge'
  * Picks the brain. Both backends answer a question and stream text and tool
  * events back; they differ in where they run and what they can reach.
  *
- *   bridge — a local Node process running the Claude Agent SDK. Uses your
- *            existing Claude Code login, so no API key, and every MCP server
- *            you have configured is available, including local stdio ones.
+ *   bridge — a local Node process running Google Gemini with live system task
+ *            tools on macOS (tasks, apps, volume, media, telemetry, shell).
  *
- *   direct — the browser calls the Claude API itself. No process to run and it
- *            deploys as a static site, but it needs an API key in the bundle
- *            and can only use remote HTTP MCP servers.
+ *   direct — the browser calls the Google Gemini API directly with streaming.
  */
+
+import { askJarvisCore } from './jarvisCore'
 
 export const usingBridge = BACKEND === 'bridge'
 
@@ -29,13 +28,37 @@ export async function ask(
   history: Msg[],
   handlers: AskHandlers,
 ): Promise<{ text: string; tools: string[] }> {
-  return usingBridge
-    ? bridge.ask(prompt, handlers)
-    : direct.ask([...history, { role: 'user', content: prompt }], handlers)
+  // 1. If bridge is active and reachable, attempt bridge
+  if (usingBridge && bridge.isConnected()) {
+    try {
+      return await bridge.ask(prompt, handlers)
+    } catch (err) {
+      console.warn('[jarvis] Bridge call failed, using autonomous Jarvis core:', err)
+    }
+  }
+
+  // 2. If direct mode is selected and Gemini key is set, try direct
+  if (!usingBridge) {
+    try {
+      return await direct.ask([...history, { role: 'user', content: prompt }], handlers)
+    } catch (err) {
+      console.warn('[jarvis] Direct Gemini API call failed, using autonomous Jarvis core:', err)
+    }
+  }
+
+  // 3. Autonomous Jarvis Core (always available, executes commands and replies immediately)
+  return await askJarvisCore(prompt, handlers)
 }
 
 export async function warm(): Promise<void> {
-  if (usingBridge) await bridge.warmBridge()
+  if (usingBridge) {
+    try {
+      await bridge.warmBridge()
+    } catch {
+      // Bridge not running; fallback to autonomous mode silently
+      console.log('[jarvis] Bridge offline — operating in autonomous Neural Core mode.')
+    }
+  }
 }
 
 /** The bridge reports its server list twice — from config on connect, then
@@ -107,6 +130,12 @@ export function interrupt(): void {
  * path holds no connection between turns — each one is its own HTTPS request —
  * so there is nothing that can be down until you try it.
  */
+export function sendConfirmation(approved: boolean, actionId?: string): void {
+  if (usingBridge) {
+    bridge.sendConfirmation(approved, actionId)
+  }
+}
+
 export function isConnected(): boolean {
   return usingBridge ? bridge.isConnected() : true
 }

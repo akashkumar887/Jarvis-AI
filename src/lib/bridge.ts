@@ -1,5 +1,5 @@
 import type { AskHandlers } from './anthropic'
-import type { Blade, Panel } from '../store'
+import { useStore, type Blade, type Panel } from '../store'
 import { BRIDGE_WS_URL } from '../config'
 
 /**
@@ -207,9 +207,22 @@ function dispatch(ws: WebSocket) {
       // A `ui` frame with no args is normal — reset and clear take none — so an
       // absent args object is an empty one, not a reason to drop the command.
       onUi?.(msg.op, (msg.args ?? {}) as Record<string, unknown>)
+    } else if (msg.type === 'confirm_request' && (msg as any).action) {
+      useStore.getState().setPendingAction((msg as any).action)
+    } else if (msg.type === 'confirm_cleared') {
+      useStore.getState().setPendingAction(null)
+    } else if (msg.type === 'mac_telemetry' && (msg as any).data) {
+      useStore.getState().setMacTelemetry((msg as any).data)
     }
   })
 }
+
+export function sendConfirmation(approved: boolean, actionId?: string): void {
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'confirm_response', approved, actionId }))
+  }
+}
+
 
 function connect(): Promise<WebSocket> {
   if (socket?.readyState === WebSocket.OPEN) return Promise.resolve(socket)

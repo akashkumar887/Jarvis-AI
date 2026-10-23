@@ -463,9 +463,9 @@ export default function App() {
     })
     const warming = warm().catch((err: Error) => s.setError(err.message))
 
-    if (!usingBridge && !env.anthropicKey) {
-      s.setError(
-        'No Anthropic API key — copy .env.example to .env.local and set VITE_ANTHROPIC_API_KEY.',
+    if (!usingBridge && !env.geminiKey) {
+      console.log(
+        '[jarvis] No Gemini API key in direct mode — operating with Autonomous Neural Core.',
       )
     }
 
@@ -491,7 +491,7 @@ export default function App() {
     // status bar, rings, suit schematic, reactor power-up — before the live
     // interface takes over. Kept a touch under the boot cue so the music is
     // still rising as the reactor lands.
-    await new Promise((r) => setTimeout(r, 9200)) // boot sequence
+    await new Promise((r) => setTimeout(r, 2600)) // fast-track boot sequence
     await warming
     store.getState().setConnected(connectedLabels())
     store.getState().setVoice(currentVoiceName())
@@ -525,6 +525,12 @@ export default function App() {
     })
 
     store.getState().setPhase('dormant')
+
+    // Confirm voice output immediately on startup
+    const welcome = createSpeaker()
+    speaker.current = welcome
+    welcome.say('All systems online, sir. J.A.R.V.I.S. is ready.')
+    void welcome.end()
   }
 
   // -- clap to start --------------------------------------------------------
@@ -562,6 +568,8 @@ export default function App() {
 
   useEffect(() => {
     let raf = 0
+    let lastLevel = 0
+    let lastStoreUpdate = 0
 
     const pump = () => {
       const st = store.getState()
@@ -571,7 +579,17 @@ export default function App() {
         st.phase === 'speaking' && speaker.current
           ? speaker.current.level()
           : micLevel()
-      st.setLevel(lvl)
+
+      // Set CSS variable directly for hardware-accelerated 60-120fps animations with 0 React renders
+      document.documentElement.style.setProperty('--mic-level', lvl.toFixed(3))
+
+      const now = performance.now()
+      // Throttle Zustand store state updates so React DOM tree doesn't thrash at 60fps
+      if (Math.abs(lvl - lastLevel) > 0.08 || now - lastStoreUpdate > 80) {
+        lastLevel = lvl
+        lastStoreUpdate = now
+        st.setLevel(lvl)
+      }
       raf = requestAnimationFrame(pump)
     }
     pump()
@@ -695,10 +713,61 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Live timer countdown
+  const timerSeconds = useStore((s) => s.timerSeconds)
+  useEffect(() => {
+    if (timerSeconds === null) return
+    const interval = setInterval(() => {
+      const current = store.getState().timerSeconds
+      if (current === null) {
+        clearInterval(interval)
+        return
+      }
+      if (current <= 1) {
+        store.getState().setTimerSeconds(null)
+        store.getState().setStatusSubtext('Timer complete! 🔔')
+        sfx.play('done')
+        const spk = createSpeaker()
+        speaker.current = spk
+        spk.say('Sir, your timer has completed.')
+        clearInterval(interval)
+      } else {
+        store.getState().setTimerSeconds(current - 1)
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [timerSeconds !== null])
+
+  const handleToggleMic = () => {
+    const currentPhase = store.getState().phase
+    if (currentPhase === 'offline') {
+      void powerOn()
+      return
+    }
+    if (currentPhase === 'speaking') {
+      silence()
+      listen(FOLLOW_UP_MS)
+      return
+    }
+    if (currentPhase === 'listening') {
+      goDormant()
+      return
+    }
+    listen(FOLLOW_UP_MS)
+  }
+
+  const handleTransmitText = async (text: string) => {
+    const currentPhase = store.getState().phase
+    if (currentPhase === 'offline') {
+      await powerOn()
+    }
+    void respond(text)
+  }
+
   return (
     <>
       <Scene />
-      <Hud />
+      <Hud onTransmitText={handleTransmitText} onToggleMic={handleToggleMic} />
       <Boot />
       <Diagnostics />
       <Ignition onStart={() => void powerOn()} />

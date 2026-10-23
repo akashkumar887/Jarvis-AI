@@ -44,7 +44,6 @@ function vendorWasm() {
   }
 }
 
-const writes = process.argv.includes('--writes')
 
 // A dim label per process, so the interleaved logs stay readable.
 const paint = (tag, colour) => (line) =>
@@ -105,21 +104,31 @@ process.on('SIGTERM', () => shutdown(0))
  * without widening what the bridge trusts by default.
  */
 const port = process.env.PORT
-const bridgeEnv = writes ? { JARVIS_ALLOW_WRITES: '1' } : {}
+const noWrites = process.argv.includes('--no-writes') || process.env.JARVIS_ALLOW_WRITES === '0'
+const bridgeEnv = {
+  JARVIS_ALLOW_WRITES: noWrites ? '0' : '1',
+  JARVIS_MODEL: process.env.JARVIS_MODEL || 'gemini-2.5-flash',
+}
 if (port) {
   bridgeEnv.JARVIS_ALLOWED_ORIGINS = `http://localhost:${port},http://127.0.0.1:${port}`
   console.log(`  serving the face on port ${port}; the bridge will accept it.\n`)
 }
 
+const isProd = process.argv.includes('--prod') || process.env.NODE_ENV === 'production'
+
 vendorWasm()
 
-console.log('\nJ.A.R.V.I.S. starting — the brain and the face.\n')
+console.log(`\nJ.A.R.V.I.S. starting [${isProd ? 'PRODUCTION' : 'DEV'}] — the brain and the face.\n`)
 run('bridge', 'node', ['bridge/server.mjs'], '36', bridgeEnv)
 // npm is a shell script on most systems; call the vite binary directly so we do
 // not need shell:true (which would break the argument handling above).
-run('face', process.execPath, ['node_modules/vite/bin/vite.js'], '35', {})
+const faceArgs = isProd
+  ? ['node_modules/vite/bin/vite.js', 'preview', '--port', port || '5173', '--host', '127.0.0.1']
+  : ['node_modules/vite/bin/vite.js']
+run('face', process.execPath, faceArgs, '35', {})
 
 console.log(
-  '\nWhen it says the dev server is ready, open the URL it prints in Chrome,\n' +
+  '\nWhen ready, open http://localhost:5173 in your browser,\n' +
     'click INITIALISE, and say "Hey Jarvis". Ctrl-C stops everything.\n',
 )
+

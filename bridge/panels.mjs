@@ -426,4 +426,71 @@ export function displayServer(emit, emitBlade) {
   })
 }
 
+export const PANEL_TOOLS_DEFINITIONS = [
+  {
+    name: 'display',
+    description: 'Render a custom holographic HUD panel on screen using the .hud-* design system markup.',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'Title of the HUD card or panel.' },
+        html: { type: 'STRING', description: 'Markup formatted with .hud-rows, .hud-row, .hud-label, .hud-sub, .hud-metric, etc.' },
+      },
+      required: ['title', 'html'],
+    },
+  },
+  {
+    name: 'blade',
+    description: 'Render an interactive holographic blade surface on screen (markup, article, or visual card).',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        title: { type: 'STRING', description: 'Title of the blade.' },
+        html: { type: 'STRING', description: 'Custom markup.' },
+        kind: { type: 'STRING', enum: ['markup', 'article', 'image', 'video'], description: 'Blade kind.' },
+        size: { type: 'STRING', enum: ['compact', 'tall', 'wide', 'full'], description: 'Size.' },
+      },
+      required: ['title'],
+    },
+  },
+]
+
+export async function executePanelTool(name, args = {}, emitPanel, emitBlade) {
+  if (name === 'display') {
+    const title = String(args.title || 'INFORMATION').trim()
+    const html = String(args.html || '').trim()
+    if (emitBlade) {
+      emitBlade({
+        id: `blade-${Date.now()}`,
+        title,
+        kind: 'markup',
+        html,
+        size: 'tall',
+        hold: 'turn',
+      })
+      return 'HUD display panel rendered on screen.'
+    }
+    return 'Display emitter unavailable.'
+  }
+
+  if (name === 'blade') {
+    const title = String(args.title || 'BLADE').trim()
+    if (emitBlade) {
+      emitBlade({
+        id: `blade-${Date.now()}`,
+        title,
+        kind: args.kind || 'markup',
+        html: args.html,
+        url: args.url,
+        size: args.size || 'tall',
+        hold: args.hold || 'turn',
+      })
+      return 'Blade surface projected on HUD.'
+    }
+    return 'Blade emitter unavailable.'
+  }
+
+  return `Unknown panel tool: ${name}`
+}
+
 const refuse = (text) => ({ isError: true, content: [{ type: 'text', text }] })

@@ -210,6 +210,31 @@ function defined<T extends object>(patch: T | undefined): Partial<T> {
  */
 const MAX_ORBITS = 8
 
+export type PendingAction = {
+  id: string
+  tool: string
+  args: Record<string, unknown>
+  title: string
+  description: string
+  permission: string
+  impact?: 'low' | 'medium' | 'high'
+}
+
+export type MacTelemetry = {
+  batteryPct: string
+  powerSource: string
+  isCharging: boolean
+  diskFree: string
+  diskTotal: string
+  cpuCores: number
+  memoryTotal: string
+  osVersion: string
+  volume: number
+  wifiName: string
+  connected: boolean
+  lastUpdated: number
+}
+
 type State = {
   phase: Phase
   /** 0..1 mic loudness, drives the reactor pulse. */
@@ -240,6 +265,25 @@ type State = {
   expandedBlade: string | null
   /** JARVIS's control over his own appearance. UI_DEFAULTS == the stock look. */
   ui: UiState
+
+  activeTask: string
+  statusSubtext: string
+  timerSeconds: number | null
+  savedNotes: Array<{ id: string; title: string; body: string; time: string }>
+
+  /** Mac permissions, strict confirmation gate & hardware telemetry */
+  pendingAction: PendingAction | null
+  strictConfirmation: boolean
+  macTelemetry: MacTelemetry
+
+  setPendingAction: (action: PendingAction | null) => void
+  setStrictConfirmation: (strict: boolean) => void
+  setMacTelemetry: (data: Partial<MacTelemetry>) => void
+
+  setActiveTask: (t: string) => void
+  setStatusSubtext: (s: string) => void
+  setTimerSeconds: (s: number | null) => void
+  addNote: (title: string, body: string) => void
 
   setVoice: (v: string) => void
   setGestures: (on: boolean) => void
@@ -287,6 +331,60 @@ export const useStore = create<State>((set) => ({
   expandedBlade: null,
   bootNote: '',
   ui: defaultUi(),
+  activeTask: 'desktop: screen-notes.pdf',
+  statusSubtext: 'Saved: screen-notes.pdf',
+  timerSeconds: null,
+  savedNotes: [
+    {
+      id: 'default-1',
+      title: 'screen-notes.pdf',
+      body: 'Telemetry scan recorded: Arc reactor stability 98.4%. HUD optics calibrated.',
+      time: '11:00 AM',
+    },
+  ],
+  pendingAction: null,
+  strictConfirmation: false,
+  macTelemetry: {
+    batteryPct: '100%',
+    powerSource: 'AC Power',
+    isCharging: true,
+    diskFree: '335 GB',
+    diskTotal: '466 GB',
+    cpuCores: 12,
+    memoryTotal: '16 GB',
+    osVersion: 'macOS 26.6.2',
+    volume: 77,
+    wifiName: 'Stark-Secure-Net',
+    connected: true,
+    lastUpdated: Date.now(),
+  },
+
+  setPendingAction: (pendingAction) => set({ pendingAction }),
+  setStrictConfirmation: (strictConfirmation) => set({ strictConfirmation }),
+  setMacTelemetry: (data) =>
+    set((s) => ({
+      macTelemetry: {
+        ...s.macTelemetry,
+        ...data,
+        lastUpdated: Date.now(),
+      },
+    })),
+
+  setActiveTask: (activeTask) => set({ activeTask }),
+  setStatusSubtext: (statusSubtext) => set({ statusSubtext }),
+  setTimerSeconds: (timerSeconds) => set({ timerSeconds }),
+  addNote: (title, body) =>
+    set((s) => ({
+      savedNotes: [
+        ...s.savedNotes,
+        {
+          id: `note-${Date.now()}`,
+          title,
+          body,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        },
+      ],
+    })),
 
   setVoice: (voice) => set({ voice }),
   setGestures: (gestures) => set({ gestures }),

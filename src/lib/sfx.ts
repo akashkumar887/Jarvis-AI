@@ -74,6 +74,11 @@ export async function unlockAudio(): Promise<void> {
        */
     }
   }
+  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    try {
+      window.speechSynthesis.resume()
+    } catch {}
+  }
   void loadOverrides()
 }
 
